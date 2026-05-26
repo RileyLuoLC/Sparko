@@ -1,0 +1,346 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ADMIN
+  EDITOR
+  REVIEWER
+  ANALYST
+}
+
+enum XAccountKind {
+  COMPANY
+  PERSONAL
+}
+
+enum XAccountStatus {
+  CONNECTED
+  NEEDS_REAUTH
+  DISABLED
+}
+
+enum DraftStatus {
+  CANDIDATE
+  NEEDS_REVIEW
+  APPROVED
+  REJECTED
+  SCHEDULED
+  PUBLISHED
+}
+
+enum RiskLevel {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum ApprovalDecision {
+  APPROVED
+  REJECTED
+  CHANGES_REQUESTED
+}
+
+enum ScheduledPostStatus {
+  QUEUED
+  PUBLISHING
+  PUBLISHED
+  FAILED
+  CANCELED
+}
+
+enum InteractionType {
+  REPLY
+  REPOST
+  QUOTE
+}
+
+enum InteractionStatus {
+  SUGGESTED
+  APPROVED
+  EXECUTED
+  REJECTED
+  BLOCKED
+}
+
+enum CompanyMaterialType {
+  POSITIONING
+  PRODUCT
+  CUSTOMER_PROOF
+  ANNOUNCEMENT
+  OTHER
+}
+
+model Workspace {
+  id                     String             @id @default(cuid())
+  name                   String
+  defaultLanguage        String             @default("en")
+  defaultWoeid           Int                @default(1)
+  appTimezone            String             @default("Asia/Shanghai")
+  targetMarketTimezone   String             @default("America/New_York")
+  duplicateWindowHours   Int                @default(168)
+  minPostIntervalMinutes Int                @default(240)
+  createdAt              DateTime           @default(now())
+  updatedAt              DateTime           @updatedAt
+  users                  User[]
+  xAccounts              XAccount[]
+  personas               Persona[]
+  companyMaterials       CompanyMaterial[]
+  watchlistAccounts      WatchlistAccount[]
+  trendSnapshots         TrendSnapshot[]
+  sourcePosts            SourcePost[]
+  draftPosts             DraftPost[]
+  scheduledPosts         ScheduledPost[]
+  interactionSuggestions InteractionSuggestion[]
+  auditLogs              AuditLog[]
+}
+
+model User {
+  id          String       @id @default(cuid())
+  workspaceId String
+  email       String
+  name        String
+  role        UserRole     @default(EDITOR)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  workspace   Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  approvals   Approval[]
+  auditLogs   AuditLog[]
+
+  @@unique([workspaceId, email])
+}
+
+model XAccount {
+  id                 String                @id @default(cuid())
+  workspaceId        String
+  personaId          String?
+  xUserId            String
+  username           String
+  displayName        String
+  kind               XAccountKind
+  status             XAccountStatus        @default(CONNECTED)
+  timezone           String?
+  accessToken        String?
+  refreshToken       String?
+  tokenExpiresAt     DateTime?
+  roleLabels         String[]              @default([])
+  quotePostsEnabled  Boolean               @default(false)
+  repliesEnabled     Boolean               @default(true)
+  createdAt          DateTime              @default(now())
+  updatedAt          DateTime              @updatedAt
+  workspace          Workspace             @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  persona            Persona?              @relation(fields: [personaId], references: [id], onDelete: SetNull)
+  draftPosts         DraftPost[]
+  scheduledPosts     ScheduledPost[]
+  metricsSnapshots   MetricsSnapshot[]
+  interactionSuggestions InteractionSuggestion[]
+
+  @@unique([workspaceId, xUserId])
+}
+
+model Persona {
+  id              String       @id @default(cuid())
+  workspaceId     String
+  name            String
+  roleLabel       String
+  voice           String
+  audience        String
+  contentPillars  String[]     @default([])
+  guardrails      String
+  avoidTopics     String[]     @default([])
+  defaultHashtags String[]
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  workspace       Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  xAccounts       XAccount[]
+  draftPosts      DraftPost[]
+}
+
+model CompanyMaterial {
+  id          String              @id @default(cuid())
+  workspaceId String
+  title       String
+  type        CompanyMaterialType @default(OTHER)
+  content     String
+  url         String?
+  notes       String?
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+  workspace   Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, updatedAt])
+}
+
+model WatchlistAccount {
+  id           String    @id @default(cuid())
+  workspaceId  String
+  xUserId      String
+  username     String
+  displayName  String
+  priority     Int       @default(50)
+  notes        String?
+  lastSeenPostId String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  workspace    Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  sourcePosts  SourcePost[]
+
+  @@unique([workspaceId, username])
+}
+
+model TrendSnapshot {
+  id          String       @id @default(cuid())
+  workspaceId String
+  woeid       Int
+  trendName   String
+  tweetCount  Int?
+  rank        Int
+  capturedAt  DateTime     @default(now())
+  workspace   Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  sourcePosts SourcePost[]
+  draftPosts  DraftPost[]
+}
+
+model SourcePost {
+  id                 String       @id @default(cuid())
+  workspaceId        String
+  trendSnapshotId    String?
+  watchlistAccountId String?
+  xPostId            String
+  authorUsername     String
+  authorDisplayName  String?
+  text               String
+  url                String
+  likeCount          Int          @default(0)
+  repostCount        Int          @default(0)
+  replyCount         Int          @default(0)
+  quoteCount         Int          @default(0)
+  postedAt           DateTime
+  capturedAt         DateTime     @default(now())
+  workspace          Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  trendSnapshot      TrendSnapshot? @relation(fields: [trendSnapshotId], references: [id], onDelete: SetNull)
+  watchlistAccount   WatchlistAccount? @relation(fields: [watchlistAccountId], references: [id], onDelete: SetNull)
+  draftPosts         DraftPost[]
+  interactionSuggestions InteractionSuggestion[]
+
+  @@unique([workspaceId, xPostId])
+}
+
+model DraftPost {
+  id              String          @id @default(cuid())
+  workspaceId     String
+  personaId       String
+  xAccountId      String
+  sourcePostId    String?
+  trendSnapshotId String?
+  text            String
+  rationale       String
+  hashtags        String[]
+  status          DraftStatus     @default(CANDIDATE)
+  riskLevel       RiskLevel       @default(LOW)
+  riskReasons     String[]
+  aiModel         String
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  workspace       Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  persona         Persona         @relation(fields: [personaId], references: [id], onDelete: Cascade)
+  xAccount        XAccount        @relation(fields: [xAccountId], references: [id], onDelete: Cascade)
+  sourcePost      SourcePost?     @relation(fields: [sourcePostId], references: [id], onDelete: SetNull)
+  trendSnapshot   TrendSnapshot?  @relation(fields: [trendSnapshotId], references: [id], onDelete: SetNull)
+  approvals       Approval[]
+  scheduledPosts  ScheduledPost[]
+}
+
+model Approval {
+  id          String           @id @default(cuid())
+  draftPostId String
+  reviewerId  String
+  decision    ApprovalDecision
+  comment     String?
+  createdAt   DateTime         @default(now())
+  draftPost   DraftPost        @relation(fields: [draftPostId], references: [id], onDelete: Cascade)
+  reviewer    User             @relation(fields: [reviewerId], references: [id], onDelete: Cascade)
+}
+
+model ScheduledPost {
+  id               String              @id @default(cuid())
+  workspaceId      String
+  draftPostId      String?
+  xAccountId       String
+  finalText        String
+  scheduledFor     DateTime
+  status           ScheduledPostStatus @default(QUEUED)
+  duplicateGroupKey String
+  lastError        String?
+  xPublishedPostId String?
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+  workspace        Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  draftPost        DraftPost?          @relation(fields: [draftPostId], references: [id], onDelete: SetNull)
+  xAccount         XAccount            @relation(fields: [xAccountId], references: [id], onDelete: Cascade)
+  publishAttempts  PublishAttempt[]
+
+  @@index([workspaceId, scheduledFor])
+}
+
+model PublishAttempt {
+  id              String      @id @default(cuid())
+  scheduledPostId String
+  attemptNumber   Int
+  requestPayload   Json
+  responsePayload  Json?
+  statusCode       Int?
+  error            String?
+  createdAt        DateTime    @default(now())
+  scheduledPost    ScheduledPost @relation(fields: [scheduledPostId], references: [id], onDelete: Cascade)
+}
+
+model MetricsSnapshot {
+  id             String    @id @default(cuid())
+  xAccountId     String
+  xPostId        String
+  likeCount      Int       @default(0)
+  repostCount    Int       @default(0)
+  replyCount     Int       @default(0)
+  quoteCount     Int       @default(0)
+  impressionCount Int?
+  urlClickCount  Int?
+  capturedAt     DateTime  @default(now())
+  xAccount       XAccount  @relation(fields: [xAccountId], references: [id], onDelete: Cascade)
+}
+
+model InteractionSuggestion {
+  id              String            @id @default(cuid())
+  workspaceId     String
+  xAccountId      String
+  sourcePostId    String
+  type            InteractionType
+  suggestedText   String?
+  rationale       String
+  status          InteractionStatus @default(SUGGESTED)
+  riskLevel       RiskLevel         @default(LOW)
+  riskReasons     String[]
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  workspace       Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  xAccount        XAccount          @relation(fields: [xAccountId], references: [id], onDelete: Cascade)
+  sourcePost      SourcePost        @relation(fields: [sourcePostId], references: [id], onDelete: Cascade)
+}
+
+model AuditLog {
+  id          String    @id @default(cuid())
+  workspaceId String
+  userId      String?
+  action      String
+  entityType  String
+  entityId    String
+  metadata    Json
+  createdAt   DateTime  @default(now())
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user        User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+}
