@@ -1,8 +1,20 @@
 # GrandX
 
-GrandX is an open-source console for drafting, reviewing, scheduling, and publishing X posts with human approval in the loop.
+GrandX is an open-source console for people who want to grow on X through founder-led growth, team-led growth, personal branding, and building in public.
+
+Most builders know they should post more. The hard part is knowing what to say every day: what will attract the right audience, carry a real point of view, and still give readers something useful. GrandX turns account identity, company context, weekly inputs, and post briefs into draft options you can review, edit, schedule, and publish with human approval in the loop.
+
+It is built for founders, product teams, growth teams, creators, and operators who want their X presence to sound like a thinking person or team, not a generic content machine.
 
 Each installation uses the operator's own X Developer app, X accounts, API keys, database, and Redis queue. The repository ships with fictional `Example Studio` demo data only.
+
+## Why GrandX
+
+- Shape a clear account identity before drafting: role, tone, audience, content pillars, and guardrails.
+- Turn messy weekly updates into useful posting raw material.
+- Draft multiple options from a brief, then keep one or more into a review queue.
+- Approve, schedule, reschedule, cancel, and publish through your own connected X account.
+- Keep control of your own API keys, database, OAuth tokens, and publishing workflow.
 
 ## Quick Start
 
@@ -71,6 +83,10 @@ Set `DRAFT_AI_PROVIDER` to one of:
 Only the selected provider needs a key. The model values in `.env.example` are examples; replace them with models available to your own provider account.
 
 These AI provider keys are separate from X API keys. X OAuth controls account connection and publishing. The AI provider controls drafting and context extraction.
+
+Different models write very differently. Try a few providers and models until you find the voice that fits your account. Smaller or cheaper models may be fine for structured extraction and template generation, while stronger writing models usually do better at opinionated, insightful, audience-aware posts.
+
+At the time of release, the builder's favorite writing model is `gpt-5.5` because it tends to articulate sharper opinions and more thoughtful post angles. It may cost more than smaller models, so check your provider's current pricing and usage limits before making it your default.
 
 ## X Developer App Setup
 
