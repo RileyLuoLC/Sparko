@@ -74,6 +74,32 @@ npm run prisma:seed
 
 This deletes local Postgres data, including connected X accounts, OAuth tokens, scheduled posts, published posts, metrics, and audit logs.
 
+If you want a clean demo database while keeping your existing local data, run a separate clean stack on different ports:
+
+```bash
+docker compose -p grandx-clean -f docker-compose.clean.yml up -d
+DATABASE_URL="postgresql://xposter:xposter@localhost:55432/xposter?schema=public" npm run prisma:migrate
+DATABASE_URL="postgresql://xposter:xposter@localhost:55432/xposter?schema=public" npm run prisma:seed
+```
+
+Then start GrandX against the clean stack:
+
+```bash
+DATABASE_URL="postgresql://xposter:xposter@localhost:55432/xposter?schema=public" \
+REDIS_URL="redis://localhost:56379" \
+npm run dev
+```
+
+In another terminal, run the clean worker:
+
+```bash
+DATABASE_URL="postgresql://xposter:xposter@localhost:55432/xposter?schema=public" \
+REDIS_URL="redis://localhost:56379" \
+npm run worker
+```
+
+This does not touch the default `docker-compose.yml` volumes or the data behind `localhost:5432`.
+
 ## Workflow
 
 1. Connect one or more X accounts with OAuth.
