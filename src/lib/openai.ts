@@ -1,5 +1,5 @@
 import OpenAI from "openai";
-import { env, isDraftAiConfigured, isOpenAIConfigured } from "./env";
+import { env } from "./env";
 import { buildPersonaPrompt, formatDraftText } from "./policy";
 import type {
   CompanyMaterial,
@@ -64,6 +64,89 @@ const companyContextSchema = {
   }
 };
 
+type AiProvider = "openai" | "xai" | "claude";
+type AiPurpose = "draft" | "strategy";
+type AiInputMessage = { role: string; content: string };
+type JsonSchema = Record<string, unknown>;
+
+function selectedAiProvider(): AiProvider {
+  if (env.draftAiProvider === "xai" || env.draftAiProvider === "grok") {
+    return "xai";
+  }
+
+  if (env.draftAiProvider === "claude" || env.draftAiProvider === "anthropic") {
+    return "claude";
+  }
+
+  return "openai";
+}
+
+function providerDisplayName(provider: AiProvider) {
+  if (provider === "xai") {
+    return "xAI/Grok";
+  }
+
+  if (provider === "claude") {
+    return "Claude";
+  }
+
+  return "OpenAI";
+}
+
+function providerApiKeyName(provider: AiProvider) {
+  if (provider === "xai") {
+    return "XAI_API_KEY";
+  }
+
+  if (provider === "claude") {
+    return "ANTHROPIC_API_KEY";
+  }
+
+  return "OPENAI_API_KEY";
+}
+
+function isProviderConfigured(provider: AiProvider) {
+  if (provider === "xai") {
+    return Boolean(env.xaiApiKey);
+  }
+
+  if (provider === "claude") {
+    return Boolean(env.anthropicApiKey);
+  }
+
+  return Boolean(env.openaiApiKey);
+}
+
+function requireProviderConfigured(provider: AiProvider, feature: string) {
+  if (isProviderConfigured(provider)) {
+    return;
+  }
+
+  throw new Error(
+    `${feature} requires ${providerApiKeyName(provider)} for ${providerDisplayName(provider)} in .env.local. Add a key and restart the dev server.`
+  );
+}
+
+function providerModel(provider: AiProvider, purpose: AiPurpose) {
+  if (provider === "xai") {
+    return purpose === "draft" ? env.xaiDraftModel : env.xaiStrategyModel;
+  }
+
+  if (provider === "claude") {
+    return purpose === "draft" ? env.anthropicDraftModel : env.anthropicStrategyModel;
+  }
+
+  return purpose === "draft" ? env.openaiDraftModel : env.openaiStrategyModel;
+}
+
+function modelLabel(provider: AiProvider, model: string) {
+  if (provider === "openai") {
+    return model;
+  }
+
+  return `${provider}:${model}`;
+}
+
 function parseResponseText(response: unknown): string {
   const asRecord = response as { output_text?: string; output?: Array<{ content?: Array<{ text?: string }> }> };
   if (asRecord.output_text) {
@@ -89,16 +172,9 @@ export async function generateDraftCandidates(args: {
   generationBrief?: string;
   count?: number;
 }): Promise<{ model: string; candidates: GeneratedDraftCandidate[] }> {
-  if (!isDraftAiConfigured()) {
-    throw new Error(
-      env.draftAiProvider === "xai"
-        ? "Grok draft generation requires XAI_API_KEY in .env.local. Add a key and restart the dev server."
-        : "AI generation requires OPENAI_API_KEY in .env.local. Add a key and restart the dev server."
-    );
-  }
-
-  const provider = env.draftAiProvider === "xai" ? "xai" : "openai";
-  const model = provider === "xai" ? env.xaiDraftModel : env.openaiDraftModel;
+  const provider = selectedAiProvider();
+  requireProviderConfigured(provider, "AI draft generation");
+  const model = providerModel(provider, "draft");
   const sourceDigest = args.sourcePosts.slice(0, 5).map((post) => ({
     id: post.id,
     author: post.authorUsername,
@@ -177,14 +253,16 @@ export async function generateDraftCandidates(args: {
     }
   ];
 
-  const text =
-    provider === "xai"
-      ? await generateWithXai(model, input)
-      : await generateWithOpenAI(model, input);
-  const parsed = JSON.parse(text) as { candidates: GeneratedDraftCandidate[] };
+  const parsed = await generateStructuredJson<{ candidates: GeneratedDraftCandidate[] }>({
+    provider,
+    model,
+    input,
+    schemaName: "x_draft_candidates",
+    schema: draftSchema
+  });
 
   return {
-    model: provider === "xai" ? `xai:${model}` : model,
+    model: modelLabel(provider, model),
     candidates: parsed.candidates.map((candidate) => ({
       ...candidate,
       text: formatDraftText(candidate.text),
@@ -196,7 +274,25 @@ export async function generateDraftCandidates(args: {
   };
 }
 
-async function generateWithOpenAI(model: string, input: Array<{ role: string; content: string }>) {
+async function generateStructuredJson<T>(args: {
+  provider: AiProvider;
+  model: string;
+  input: AiInputMessage[];
+  schemaName: string;
+  schema: JsonSchema;
+}): Promise<T> {
+  if (args.provider === "xai") {
+    return JSON.parse(await generateWithXai(args.model, args.input, args.schemaName, args.schema)) as T;
+  }
+
+  if (args.provider === "claude") {
+    return (await generateWithClaude(args.model, args.input, args.schemaName, args.schema)) as T;
+  }
+
+  return JSON.parse(await generateWithOpenAI(args.model, args.input, args.schemaName, args.schema)) as T;
+}
+
+async function generateWithOpenAI(model: string, input: AiInputMessage[], schemaName: string, schema: JsonSchema) {
   const client = new OpenAI({ apiKey: env.openaiApiKey });
   const response = await (client as any).responses.create({
     model,
@@ -204,8 +300,8 @@ async function generateWithOpenAI(model: string, input: Array<{ role: string; co
     text: {
       format: {
         type: "json_schema",
-        name: "x_draft_candidates",
-        schema: draftSchema,
+        name: schemaName,
+        schema,
         strict: true
       }
     }
@@ -214,7 +310,7 @@ async function generateWithOpenAI(model: string, input: Array<{ role: string; co
   return parseResponseText(response);
 }
 
-async function generateWithXai(model: string, input: Array<{ role: string; content: string }>) {
+async function generateWithXai(model: string, input: AiInputMessage[], schemaName: string, schema: JsonSchema) {
   const client = new OpenAI({ apiKey: env.xaiApiKey, baseURL: env.xaiBaseUrl });
   const response = await (client as any).chat.completions.create({
     model,
@@ -222,8 +318,8 @@ async function generateWithXai(model: string, input: Array<{ role: string; conte
     response_format: {
       type: "json_schema",
       json_schema: {
-        name: "x_draft_candidates",
-        schema: draftSchema,
+        name: schemaName,
+        schema,
         strict: true
       }
     }
@@ -232,18 +328,77 @@ async function generateWithXai(model: string, input: Array<{ role: string; conte
   return response.choices?.[0]?.message?.content ?? "";
 }
 
+async function generateWithClaude(model: string, input: AiInputMessage[], schemaName: string, schema: JsonSchema) {
+  const system = input
+    .filter((message) => message.role === "system")
+    .map((message) => message.content)
+    .join("\n\n");
+  const userContent = input
+    .filter((message) => message.role !== "system")
+    .map((message) => `[${message.role}]\n${message.content}`)
+    .join("\n\n");
+  const response = await fetch(`${env.anthropicBaseUrl}/v1/messages`, {
+    method: "POST",
+    headers: {
+      "anthropic-version": "2023-06-01",
+      "content-type": "application/json",
+      "x-api-key": env.anthropicApiKey ?? ""
+    },
+    body: JSON.stringify({
+      model,
+      max_tokens: 2500,
+      system: system || undefined,
+      messages: [{ role: "user", content: userContent }],
+      tools: [
+        {
+          name: schemaName,
+          description: "Return the requested JSON object.",
+          input_schema: schema
+        }
+      ],
+      tool_choice: {
+        type: "tool",
+        name: schemaName
+      }
+    })
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Claude request failed: ${response.status} ${errorText}`);
+  }
+
+  const body = (await response.json()) as {
+    content?: Array<{ type?: string; name?: string; input?: unknown; text?: string }>;
+  };
+  const toolUse = body.content?.find((item) => item.type === "tool_use" && item.name === schemaName);
+
+  if (toolUse?.input) {
+    return toolUse.input;
+  }
+
+  const text = body.content
+    ?.map((item) => item.text)
+    .filter(Boolean)
+    .join("\n");
+
+  if (text) {
+    return JSON.parse(text);
+  }
+
+  throw new Error("Claude returned no structured JSON.");
+}
+
 export async function generateRoleInputTemplatePrompt(args: {
   roleName: string;
   contentType: string;
   about: string;
 }): Promise<{ model: string; prompt: string }> {
-  if (!isOpenAIConfigured()) {
-    throw new Error("AI template creation requires OPENAI_API_KEY in .env.local. Add a key and restart the dev server.");
-  }
-
-  const client = new OpenAI({ apiKey: env.openaiApiKey });
-  const model = env.openaiStrategyModel;
-  const response = await (client as any).responses.create({
+  const provider = selectedAiProvider();
+  requireProviderConfigured(provider, "AI template creation");
+  const model = providerModel(provider, "strategy");
+  const parsed = await generateStructuredJson<{ prompt: string }>({
+    provider,
     model,
     input: [
       {
@@ -272,21 +427,12 @@ export async function generateRoleInputTemplatePrompt(args: {
         )
       }
     ],
-    text: {
-      format: {
-        type: "json_schema",
-        name: "role_input_template_prompt",
-        schema: inputTemplatePromptSchema,
-        strict: true
-      }
-    }
+    schemaName: "role_input_template_prompt",
+    schema: inputTemplatePromptSchema
   });
 
-  const text = parseResponseText(response);
-  const parsed = JSON.parse(text) as { prompt: string };
-
   return {
-    model,
+    model: modelLabel(provider, model),
     prompt: parsed.prompt.trim()
   };
 }
@@ -296,13 +442,11 @@ export async function extractCompanyContext(args: {
   pageTitle?: string;
   pageText: string;
 }): Promise<{ model: string; title: string; context: string }> {
-  if (!isOpenAIConfigured()) {
-    throw new Error("Company context extraction requires OPENAI_API_KEY in .env.local. Add a key and restart the dev server.");
-  }
-
-  const client = new OpenAI({ apiKey: env.openaiApiKey });
-  const model = env.openaiStrategyModel;
-  const response = await (client as any).responses.create({
+  const provider = selectedAiProvider();
+  requireProviderConfigured(provider, "Company context extraction");
+  const model = providerModel(provider, "strategy");
+  const parsed = await generateStructuredJson<{ title: string; context: string }>({
+    provider,
     model,
     input: [
       {
@@ -331,21 +475,12 @@ export async function extractCompanyContext(args: {
         )
       }
     ],
-    text: {
-      format: {
-        type: "json_schema",
-        name: "company_context",
-        schema: companyContextSchema,
-        strict: true
-      }
-    }
+    schemaName: "company_context",
+    schema: companyContextSchema
   });
 
-  const text = parseResponseText(response);
-  const parsed = JSON.parse(text) as { title: string; context: string };
-
   return {
-    model,
+    model: modelLabel(provider, model),
     title: parsed.title.trim(),
     context: parsed.context.trim()
   };

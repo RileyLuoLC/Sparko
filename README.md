@@ -38,13 +38,39 @@ X_CLIENT_SECRET=
 X_REDIRECT_URI=http://localhost:3000/api/x/oauth/callback
 X_BEARER_TOKEN=
 
+# Pick one AI provider: openai, xai, or claude
 DRAFT_AI_PROVIDER=openai
+
 OPENAI_API_KEY=
 OPENAI_DRAFT_MODEL=gpt-5-mini
 OPENAI_STRATEGY_MODEL=gpt-5.1
+
+XAI_API_KEY=
+XAI_BASE_URL=https://api.x.ai/v1
+XAI_DRAFT_MODEL=grok-4.3
+XAI_STRATEGY_MODEL=grok-4.3
+
+ANTHROPIC_API_KEY=
+ANTHROPIC_BASE_URL=https://api.anthropic.com
+ANTHROPIC_DRAFT_MODEL=claude-sonnet-4-20250514
+ANTHROPIC_STRATEGY_MODEL=claude-sonnet-4-20250514
 ```
 
 Do not commit `.env`, `.env.local`, database dumps, logs, screenshots with tokens, or generated build output.
+
+## AI Provider Setup
+
+GrandX can use OpenAI, xAI/Grok, or Anthropic/Claude for draft generation, account input prompts, and company context extraction.
+
+Set `DRAFT_AI_PROVIDER` to one of:
+
+- `openai`: fill `OPENAI_API_KEY`, `OPENAI_DRAFT_MODEL`, and `OPENAI_STRATEGY_MODEL`
+- `xai`: fill `XAI_API_KEY`, `XAI_BASE_URL`, `XAI_DRAFT_MODEL`, and `XAI_STRATEGY_MODEL`
+- `claude`: fill `ANTHROPIC_API_KEY`, `ANTHROPIC_BASE_URL`, `ANTHROPIC_DRAFT_MODEL`, and `ANTHROPIC_STRATEGY_MODEL`
+
+Only the selected provider needs a key. The model values in `.env.example` are examples; replace them with models available to your own provider account.
+
+These AI provider keys are separate from X API keys. X OAuth controls account connection and publishing. The AI provider controls drafting and context extraction.
 
 ## X Developer App Setup
 
@@ -129,7 +155,7 @@ npm run build
 Before creating the first public commit, run a local audit:
 
 ```bash
-rg -n "OPENAI_API_KEY=sk-|X_CLIENT_SECRET=.+|X_BEARER_TOKEN=.+|access_token|refresh_token" --glob '!node_modules/**' --glob '!.next/**'
+rg -n "OPENAI_API_KEY=sk-|XAI_API_KEY=.+|ANTHROPIC_API_KEY=.+|X_CLIENT_SECRET=.+|X_BEARER_TOKEN=.+|access_token|refresh_token" --glob '!node_modules/**' --glob '!.next/**'
 ```
 
 Expected results should be code identifiers or empty example placeholders only, never real token values or real account/post records. Also run the same search with any real handles, user ids, and post ids you used locally before creating a public commit.

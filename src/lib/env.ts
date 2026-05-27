@@ -15,7 +15,13 @@ export const env = {
   openaiStrategyModel: process.env.OPENAI_STRATEGY_MODEL ?? "gpt-5.1",
   xaiApiKey: process.env.XAI_API_KEY,
   xaiBaseUrl: process.env.XAI_BASE_URL ?? "https://api.x.ai/v1",
-  xaiDraftModel: process.env.XAI_DRAFT_MODEL ?? "grok-4.3"
+  xaiDraftModel: process.env.XAI_DRAFT_MODEL ?? "grok-4.3",
+  xaiStrategyModel: process.env.XAI_STRATEGY_MODEL ?? process.env.XAI_DRAFT_MODEL ?? "grok-4.3",
+  anthropicApiKey: process.env.ANTHROPIC_API_KEY,
+  anthropicBaseUrl: process.env.ANTHROPIC_BASE_URL ?? "https://api.anthropic.com",
+  anthropicDraftModel: process.env.ANTHROPIC_DRAFT_MODEL ?? "claude-sonnet-4-20250514",
+  anthropicStrategyModel:
+    process.env.ANTHROPIC_STRATEGY_MODEL ?? process.env.ANTHROPIC_DRAFT_MODEL ?? "claude-sonnet-4-20250514"
 };
 
 export function isOpenAIConfigured() {
@@ -23,8 +29,12 @@ export function isOpenAIConfigured() {
 }
 
 export function isDraftAiConfigured() {
-  if (env.draftAiProvider === "xai") {
+  if (env.draftAiProvider === "xai" || env.draftAiProvider === "grok") {
     return Boolean(env.xaiApiKey);
+  }
+
+  if (env.draftAiProvider === "claude" || env.draftAiProvider === "anthropic") {
+    return Boolean(env.anthropicApiKey);
   }
 
   return isOpenAIConfigured();
