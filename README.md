@@ -1,6 +1,6 @@
 # GrandX
 
-GrandX is an open-source console for people who are eager for founder-led growth, team-led growth, personal branding, and building in public on X.
+GrandX is an open-source console for builders, founders, and teams shaping their presence on X through personal branding, founder-led growth, team-led growth, and building in public.
 
 Most builders know they should post more. The hard part is knowing what to say every day: what will attract the right audience, carry a real point of view, and still give readers something useful. GrandX turns account identity, company context, weekly inputs, and post briefs into draft options you can review, edit, schedule, and publish with human approval in the loop.
 
