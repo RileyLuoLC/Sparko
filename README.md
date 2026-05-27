@@ -97,12 +97,13 @@ Set `DRAFT_AI_PROVIDER` to one of:
 - `openai`: fill `OPENAI_API_KEY`, `OPENAI_DRAFT_MODEL`, and `OPENAI_STRATEGY_MODEL`
 - `xai`: fill `XAI_API_KEY`, `XAI_BASE_URL`, `XAI_DRAFT_MODEL`, and `XAI_STRATEGY_MODEL`
 - `claude`: fill `ANTHROPIC_API_KEY`, `ANTHROPIC_BASE_URL`, `ANTHROPIC_DRAFT_MODEL`, and `ANTHROPIC_STRATEGY_MODEL`
+- another LLM API of your choice: add or adapt a provider adapter in `src/lib/openai.ts`
 
 Only the selected provider needs a key. The model values in `.env.example` are examples; replace them with models available to your own provider account.
 
 These AI provider keys are separate from X API keys. X OAuth controls account connection and publishing. The AI provider controls drafting and context extraction.
 
-Different models write very differently. Try a few providers and models until you find the voice that fits your account. Smaller or cheaper models may be fine for structured extraction and template generation, while stronger writing models usually do better at opinionated, insightful, audience-aware posts.
+Different models write very differently. Try a few providers and models until you find the voice that fits your account.
 
 At the time of release, the builder's favorite writing model is `gpt-5.5` because it tends to articulate sharper opinions and more thoughtful post angles. It may cost more than smaller models, so check your provider's current pricing and usage limits before making it your default.
 
