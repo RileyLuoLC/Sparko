@@ -6,9 +6,7 @@ Most builders know they should post more. The hard part is knowing what to say e
 
 The drafting workflow is designed around formats and structures that tend to perform well on X, so rough notes, weekly updates, and company context can become posts that feel native to the feed.
 
-It is built for founders, product teams, growth teams, creators, and operators who want their X presence to sound like a thinking person or team, not a generic content machine.
-
-The goal is to help you publish authentic, organic, useful posts that fit your role, attract the audience you want, and compound into a profile worth following.
+It is built for founders, product teams, growth teams, creators, and operators who want their X presence to sound like a thinking person or team, not a generic content machine. The goal is to help you publish authentic, organic, useful posts that fit your role, attract the audience you want, and compound into a profile worth following.
 
 Each installation uses the operator's own X Developer app, X accounts, API keys, database, and Redis queue. The repository ships with fictional `Example Studio` demo data only.
 
