@@ -4,6 +4,8 @@ Open-source X growth assistant for founders, builders, and teams.
 
 Turn account identity, company context, weekly inputs, and post briefs into X posts you can review, edit, schedule, and publish — with human approval in the loop.
 
+⭐ Star Sparko if you’re building your brand, audience, or distribution on X.
+
 Most builders know they should post more. The hard part is knowing what to say every day: what will attract the right audience, carry a real point of view, and still give readers something useful.
 
 Sparko helps turn messy day-to-day context into a repeatable publishing workflow for personal branding, founder-led growth, team-led growth, and building in public.
@@ -207,4 +209,4 @@ Sparko is released under the [MIT License](LICENSE).
 
 Sparko is independent and is not affiliated with, endorsed by, or sponsored by X Corp.
 
-Star Sparko if you want the open-source playbook for turning raw ideas, weekly inputs, and company context into high-performing X posts.
+⭐ Star Sparko if you want the open-source playbook for turning raw ideas, weekly inputs, and company context into a profile worth following on X.
