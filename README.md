@@ -1,46 +1,27 @@
 # Sparko
 
-Sparko helps builders, founders, PMs, developers, designers, and investors turn X into a channel for personal branding, founder-led growth, team-led growth, and building in public.
+Open-source X growth assistant for founders, builders, and teams.
 
-Most builders know they should post more. The hard part is knowing what to say every day: what will attract the right audience, carry a real point of view, and still give readers something useful. Sparko turns account identity, company context, weekly inputs, and post briefs into draft options you can review, edit, schedule, and publish with human approval in the loop.
+Turn account identity, company context, weekly inputs, and post briefs into X posts you can review, edit, schedule, and publish — with human approval in the loop.
 
-The drafting workflow is designed around formats and structures that tend to perform well on X, so rough notes, weekly updates, and company context can become posts that feel native to the feed. The goal is to find the perfect balance between publishing authentic, organic, useful posts that fit your role, attract the audience you want, and compound into a profile worth following - while creating content that sparks discussion, earns engagement, gets reposted, and spreads on X.
+Most builders know they should post more. The hard part is knowing what to say every day: what will attract the right audience, carry a real point of view, and still give readers something useful.
 
-Star Sparko if you're building your brand, audience, or distribution on X.
+Sparko helps turn messy day-to-day context into a repeatable publishing workflow for personal branding, founder-led growth, team-led growth, and building in public.
 
-## How Sparko Is Different from Other Tools
+## How It Works
 
-Many X posting tools start from the market: they show high-performing posts, which you can save and imitate.
+1. Define your account identity
+2. Add company context
+3. Collect weekly inputs
+4. Generate draft options
+5. Review, edit, approve
+6. Schedule and publish
 
-That can be useful for learning formats, but it is hard to turn into authentic growth. A line that works for a large creator, a famous founder, or a specific operator often works because of who said it, what they have lived through, and why their audience already trusts them. If your account only repeats what performed for someone else, it becomes harder to build a recognizable voice, a reason to follow, or a reason for the right people to start conversations with you.
+## How Sparko Drafts
 
-Sparko works in the opposite direction. It starts from your identity, your company, your weekly reality, and the outcome you want: founder-led growth, team-led growth, personal branding, or building in public. Market signals can still inform what kinds of posts tend to work for people in a similar role, but the final draft is meant to sound like something you or your team could actually say.
+The drafting workflow is designed around formats and structures that tend to perform well on X, so rough notes, weekly updates, and company context can become posts that feel native to the feed.
 
-## What You Provide
-
-- Connected X accounts through your own X Developer app.
-- Account identity: role, tone, audience, content pillars, and optional guardrails.
-- Company information: product, positioning, industry, competitive advantage, and other context worth using.
-- Weekly inputs: what you learned, shipped, noticed, struggled with, or heard from customers this week.
-- Optional post briefs when you already know the angle you want to explore.
-
-## What Sparko Produces
-
-- Draft options shaped around your account identity and current context.
-- Role-based templates that collect better inputs from you.
-- Review queue drafts that can be edited before approval.
-- Scheduled posts that publish through your connected X account.
-- A lightweight workflow for keeping founder-led or team-led posting consistent without turning the account into a copy of someone else's voice.
-
-## Before / After
-
-| Raw input | Sparko-style draft |
-| --- | --- |
-| We shipped approval before scheduling. | The best AI workflow feature we shipped this week was not generation. It was the pause before publishing. Teams trust automation faster when the system knows where human judgment belongs. |
-| Customer said they do not want another content calendar. | A lot of teams do not have a posting problem. They have a context problem. The calendar is empty because nobody has turned the week's real work into clear points of view yet. |
-| Founder wants to talk about why copying viral posts fails. | Copying a viral post often copies the surface area and misses the reason it worked. Voice, timing, scars, audience trust - those are the parts that do not fit in a template. |
-| Engineer fixed queue fallback for overdue posts. | The boring part of scheduled publishing matters most: what happens when a job is missed, delayed, retried, or needs a clear audit trail. Reliability is a content feature when the workflow touches a real account. |
-| Team learned that product posts perform better with concrete examples. | Product posts get sharper when they stop saying "workflow" and start showing the moment a user recognizes themselves. Specific beats polished almost every time. |
+The goal is to find the perfect balance between publishing authentic, organic, useful posts that fit your role, attract the audience you want, and compound into a profile worth following — while creating content that sparks discussion, earns engagement, gets reposted, and spreads on X.
 
 ## Quick Start
 
