@@ -8,6 +8,8 @@ The drafting workflow is designed around formats and structures that tend to per
 
 Each installation uses the operator's own X Developer app, X accounts, API keys, database, and Redis queue. The repository ships with fictional `Example Studio` demo data only.
 
+Sparko is an independent open-source project and is not affiliated with, endorsed by, or sponsored by X Corp.
+
 ## How Sparko Is Different from Other Tools
 
 Many X posting tools start from the market: they show high-performing posts, which you can save and imitate.
