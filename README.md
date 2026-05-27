@@ -29,7 +29,7 @@ The goal is not to copy high-performing posts. The goal is to help you publish a
 ## What GrandX Produces
 
 - Draft options shaped around your account identity and current context.
-- Role-aware prompts that help teams collect better weekly posting inputs.
+- Role-based templates that collect better inputs from you.
 - Review queue drafts that can be edited before approval.
 - Scheduled posts that publish through your connected X account.
 - A lightweight workflow for keeping founder-led or team-led posting consistent without turning the account into a copy of someone else's voice.
