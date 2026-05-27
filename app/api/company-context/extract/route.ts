@@ -71,7 +71,7 @@ export async function POST(request: Request) {
     const body = ExtractCompanyContextSchema.parse(await readJson(request));
     const response = await fetch(body.url, {
       headers: {
-        "User-Agent": "GrandX company context extractor"
+        "User-Agent": "Sparko company context extractor"
       },
       signal: AbortSignal.timeout(12000)
     });

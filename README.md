@@ -1,20 +1,20 @@
-# GrandX
+# Sparko
 
-GrandX is an open-source console for builders, founders, and teams shaping their presence on X through personal branding, founder-led growth, team-led growth, and building in public.
+Sparko is an open-source console for builders, founders, and teams shaping their presence on X through personal branding, founder-led growth, team-led growth, and building in public.
 
-Most builders know they should post more. The hard part is knowing what to say every day: what will attract the right audience, carry a real point of view, and still give readers something useful. GrandX turns account identity, company context, weekly inputs, and post briefs into draft options you can review, edit, schedule, and publish with human approval in the loop.
+Most builders know they should post more. The hard part is knowing what to say every day: what will attract the right audience, carry a real point of view, and still give readers something useful. Sparko turns account identity, company context, weekly inputs, and post briefs into draft options you can review, edit, schedule, and publish with human approval in the loop.
 
 The drafting workflow is designed around formats and structures that tend to perform well on X, so rough notes, weekly updates, and company context can become posts that feel native to the feed. The goal is to find the perfect balance between publishing authentic, organic, useful posts that fit your role, attract the audience you want, and compound into a profile worth following - while creating content that sparks discussion, earns engagement, gets reposted, and spreads on X.
 
 Each installation uses the operator's own X Developer app, X accounts, API keys, database, and Redis queue. The repository ships with fictional `Example Studio` demo data only.
 
-## How GrandX Is Different from Other Tools
+## How Sparko Is Different from Other Tools
 
 Many X posting tools start from the market: they show high-performing posts, which you can save and imitate.
 
 That can be useful for learning formats, but it is hard to turn into authentic growth. A line that works for a large creator, a famous founder, or a specific operator often works because of who said it, what they have lived through, and why their audience already trusts them. If your account only repeats what performed for someone else, it becomes harder to build a recognizable voice, a reason to follow, or a reason for the right people to start conversations with you.
 
-GrandX works in the opposite direction. It starts from your identity, your company, your weekly reality, and the outcome you want: founder-led growth, team-led growth, personal branding, or building in public. Market signals can still inform what kinds of posts tend to work for people in a similar role, but the final draft is meant to sound like something you or your team could actually say.
+Sparko works in the opposite direction. It starts from your identity, your company, your weekly reality, and the outcome you want: founder-led growth, team-led growth, personal branding, or building in public. Market signals can still inform what kinds of posts tend to work for people in a similar role, but the final draft is meant to sound like something you or your team could actually say.
 
 ## What You Provide
 
@@ -24,7 +24,7 @@ GrandX works in the opposite direction. It starts from your identity, your compa
 - Weekly inputs: what you learned, shipped, noticed, struggled with, or heard from customers this week.
 - Optional post briefs when you already know the angle you want to explore.
 
-## What GrandX Produces
+## What Sparko Produces
 
 - Draft options shaped around your account identity and current context.
 - Role-based templates that collect better inputs from you.
@@ -88,7 +88,7 @@ Do not commit `.env`, `.env.local`, database dumps, logs, screenshots with token
 
 ## AI Provider Setup
 
-GrandX can use OpenAI, xAI/Grok, or Anthropic/Claude for draft generation, account input prompts, and company context extraction.
+Sparko can use OpenAI, xAI/Grok, or Anthropic/Claude for draft generation, account input prompts, and company context extraction.
 
 Set `DRAFT_AI_PROVIDER` to one of:
 
@@ -111,9 +111,9 @@ Create an app in the X Developer Portal and configure it for the account that wi
 - App type: `Web App, Automated App or Bot`
 - App permissions: `Read and write`
 - OAuth 2.0 callback URL: `http://localhost:3000/api/x/oauth/callback`
-- OAuth scopes used by GrandX: `tweet.read tweet.write users.read offline.access`
+- OAuth scopes used by Sparko: `tweet.read tweet.write users.read offline.access`
 
-After the app is configured, start GrandX and click `Connect X` / `Add Another X Account`. Each user connects their own X account through OAuth; do not paste personal user tokens into source files.
+After the app is configured, start Sparko and click `Connect X` / `Add Another X Account`. Each user connects their own X account through OAuth; do not paste personal user tokens into source files.
 
 `X_BEARER_TOKEN` is optional and only used for read-only discovery/search style features. Publishing uses the OAuth user token stored in your own database after Connect X.
 
@@ -135,12 +135,12 @@ This deletes local Postgres data, including connected X accounts, OAuth tokens, 
 If you want a clean demo database while keeping your existing local data, run a separate clean stack on different ports:
 
 ```bash
-docker compose -p grandx-clean -f docker-compose.clean.yml up -d
+docker compose -p sparko-clean -f docker-compose.clean.yml up -d
 DATABASE_URL="postgresql://xposter:xposter@localhost:55432/xposter?schema=public" npm run prisma:migrate
 DATABASE_URL="postgresql://xposter:xposter@localhost:55432/xposter?schema=public" npm run prisma:seed
 ```
 
-Then start GrandX against the clean stack:
+Then start Sparko against the clean stack:
 
 ```bash
 DATABASE_URL="postgresql://xposter:xposter@localhost:55432/xposter?schema=public" \

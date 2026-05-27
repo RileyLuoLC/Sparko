@@ -1,16 +1,16 @@
-# GrandX Project Context
+# Sparko Project Context
 
 Last updated: 2026-05-26
 
 ## Product Direction
 
-GrandX is an open-source X publishing console for people and teams who want AI-assisted drafting without losing human review, account context, and scheduled publishing control.
+Sparko is an open-source X publishing console for people and teams who want AI-assisted drafting without losing human review, account context, and scheduled publishing control.
 
 Each installation should use the operator's own X Developer app, X accounts, API keys, Postgres database, and Redis queue.
 
 ## Current Implementation
 
-GrandX is a Next.js + TypeScript app with:
+Sparko is a Next.js + TypeScript app with:
 
 - App Router dashboard UI
 - Prisma schema for Postgres

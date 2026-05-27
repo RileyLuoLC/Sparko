@@ -1,8 +1,8 @@
-# Contributing to GrandX
+# Contributing to Sparko
 
-Thanks for your interest in improving GrandX.
+Thanks for your interest in improving Sparko.
 
-GrandX is built for builders, founders, and teams who want to create authentic, useful X posts from their own identity, company context, and weekly inputs. Contributions should preserve that direction: help users sound more like themselves, not like a generic content machine.
+Sparko is built for builders, founders, and teams who want to create authentic, useful X posts from their own identity, company context, and weekly inputs. Contributions should preserve that direction: help users sound more like themselves, not like a generic content machine.
 
 ## Local Setup
 
@@ -43,7 +43,7 @@ npm run build
 
 ## Product Direction
 
-GrandX should help users:
+Sparko should help users:
 
 - define account identity before drafting
 - collect better weekly inputs

@@ -297,7 +297,7 @@ function AppFrame({ mode, children }: { mode: "console" | "background"; children
             <span className="brand-icon">
               <Sparkles size={14} />
             </span>
-            <strong>GrandX</strong>
+            <strong>Sparko</strong>
             <small>Your Growth and Branding Tool for X</small>
           </Link>
 

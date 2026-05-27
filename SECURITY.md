@@ -2,11 +2,11 @@
 
 ## Supported Versions
 
-GrandX is an early open-source project. Security fixes will target the latest version on `main` unless a release branch is created later.
+Sparko is an early open-source project. Security fixes will target the latest version on `main` unless a release branch is created later.
 
 ## Protect Your Secrets
 
-GrandX is designed for self-hosted use with your own X Developer app, X accounts, AI provider keys, database, and Redis queue.
+Sparko is designed for self-hosted use with your own X Developer app, X accounts, AI provider keys, database, and Redis queue.
 
 Never commit:
 
