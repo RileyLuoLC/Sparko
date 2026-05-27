@@ -4,7 +4,11 @@ GrandX is an open-source console for builders, founders, and teams shaping their
 
 Most builders know they should post more. The hard part is knowing what to say every day: what will attract the right audience, carry a real point of view, and still give readers something useful. GrandX turns account identity, company context, weekly inputs, and post briefs into draft options you can review, edit, schedule, and publish with human approval in the loop.
 
+The drafting workflow is designed around formats and structures that tend to perform well on X, so rough notes, weekly updates, and company context can become posts that feel native to the feed.
+
 It is built for founders, product teams, growth teams, creators, and operators who want their X presence to sound like a thinking person or team, not a generic content machine.
+
+The goal is to help you publish authentic, organic, useful posts that fit your role, attract the audience you want, and compound into a profile worth following.
 
 Each installation uses the operator's own X Developer app, X accounts, API keys, database, and Redis queue. The repository ships with fictional `Example Studio` demo data only.
 
@@ -15,10 +19,6 @@ Many X posting tools start from the market: they show high-performing posts, whi
 That can be useful for learning formats, but it is hard to turn into authentic growth. A line that works for a large creator, a famous founder, or a specific operator often works because of who said it, what they have lived through, and why their audience already trusts them. If your account only repeats what performed for someone else, it becomes harder to build a recognizable voice, a reason to follow, or a reason for the right people to start conversations with you.
 
 GrandX works in the opposite direction. It starts from your identity, your company, your weekly reality, and the outcome you want: founder-led growth, team-led growth, personal branding, or building in public. Market signals can still inform what kinds of posts tend to work for people in a similar role, but the final draft is meant to sound like something you or your team could actually say.
-
-The drafting workflow is designed around formats and structures that tend to perform well on X, so rough notes, weekly updates, and company context can become posts that feel native to the feed without forcing you to parrot someone else's voice.
-
-The goal is not to copy high-performing posts. The goal is to help you publish authentic, organic, useful posts that fit your role, attract the audience you want, and compound into a profile worth following.
 
 ## What You Provide
 
