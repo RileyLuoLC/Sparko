@@ -16,6 +16,8 @@ That can be useful for learning formats, but it is hard to turn into authentic g
 
 GrandX works in the opposite direction. It starts from your identity, your company, your weekly reality, and the outcome you want: founder-led growth, team-led growth, personal branding, or building in public. Market signals can still inform what kinds of posts tend to work for people in a similar role, but the final draft is meant to sound like something you or your team could actually say.
 
+The drafting workflow is designed around formats and structures that tend to perform well on X, so rough notes, weekly updates, and company context can become posts that feel native to the feed without forcing you to parrot someone else's voice.
+
 The goal is not to copy high-performing posts. The goal is to help you publish authentic, organic, useful posts that fit your role, attract the audience you want, and compound into a profile worth following.
 
 ## What You Provide
