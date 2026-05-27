@@ -1,0 +1,50 @@
+name: Bug report
+description: Report behavior that is broken, confusing, or unsafe.
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: Thanks for helping improve Sparko. Please use fictional examples and do not paste secrets or real OAuth tokens.
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What happened?
+      placeholder: The review queue shows...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What did you expect to happen?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: List the smallest set of steps that reproduces the issue.
+      placeholder: |
+        1. Run npm run demo
+        2. Open http://localhost:3000
+        3. Click ...
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Node version, npm version, OS, browser, and whether Docker/Postgres/Redis are local.
+    validations:
+      required: false
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or screenshots
+      description: Paste relevant logs or screenshots with secrets removed.
+      render: shell
+    validations:
+      required: false

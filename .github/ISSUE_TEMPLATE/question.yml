@@ -1,0 +1,30 @@
+name: Question
+description: Ask for help with setup, usage, or project direction.
+title: "[Question]: "
+labels:
+  - question
+body:
+  - type: markdown
+    attributes:
+      value: Please do not paste API keys, OAuth tokens, real account tokens, database dumps, or private company data.
+  - type: textarea
+    id: question
+    attributes:
+      label: Question
+      description: What are you trying to understand?
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: What have you tried so far?
+    validations:
+      required: false
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Node version, npm version, OS, browser, and local services if relevant.
+    validations:
+      required: false

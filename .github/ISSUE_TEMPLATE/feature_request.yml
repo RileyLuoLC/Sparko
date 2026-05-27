@@ -1,0 +1,47 @@
+name: Feature request
+description: Suggest a focused improvement to the product or developer workflow.
+title: "[Feature]: "
+labels:
+  - feature
+body:
+  - type: markdown
+    attributes:
+      value: >
+        Please keep requests aligned with Sparko's direction: authentic X workflows, human review, and safe publishing controls.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What user problem would this solve?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: What should Sparko do?
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Account identity
+        - Company context
+        - Weekly inputs
+        - Draft generation
+        - Review queue
+        - Scheduling and publishing
+        - Analytics
+        - Developer setup
+        - Documentation
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Any simpler or smaller approaches?
+    validations:
+      required: false

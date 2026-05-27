@@ -1,0 +1,48 @@
+name: Good first issue
+description: Maintainer template for beginner-friendly tasks.
+title: "[Good first issue]: "
+labels:
+  - good first issue
+  - help wanted
+body:
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What should change when this issue is complete?
+      placeholder: Add ...
+    validations:
+      required: true
+  - type: textarea
+    id: files
+    attributes:
+      label: Likely files
+      description: List the likely files or folders.
+      placeholder: |
+        src/components/dashboard-shell.tsx
+        tests/policy.test.ts
+    validations:
+      required: true
+  - type: dropdown
+    id: difficulty
+    attributes:
+      label: Difficulty
+      options:
+        - Beginner
+        - Intermediate
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: How will a contributor know the issue is done?
+    validations:
+      required: true
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes
+      description: Add examples, screenshots, or implementation hints. Use fictional data only.
+    validations:
+      required: false

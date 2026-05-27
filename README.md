@@ -1,14 +1,16 @@
 # Sparko
 
-Sparko is an open-source assistant for builders, founders, and teams shaping their presence on X through personal branding, founder-led growth, team-led growth, and building in public.
+Sparko helps builders, founders, PMs, developers, designers, and investors turn X into a channel for personal branding, founder-led growth, team-led growth, and building in public.
 
 Most builders know they should post more. The hard part is knowing what to say every day: what will attract the right audience, carry a real point of view, and still give readers something useful. Sparko turns account identity, company context, weekly inputs, and post briefs into draft options you can review, edit, schedule, and publish with human approval in the loop.
 
 The drafting workflow is designed around formats and structures that tend to perform well on X, so rough notes, weekly updates, and company context can become posts that feel native to the feed. The goal is to find the perfect balance between publishing authentic, organic, useful posts that fit your role, attract the audience you want, and compound into a profile worth following - while creating content that sparks discussion, earns engagement, gets reposted, and spreads on X.
 
-Each installation uses the operator's own X Developer app, X accounts, API keys, database, and Redis queue. The repository ships with fictional `Example Studio` demo data only.
+Star Sparko if you're building your brand, audience, or distribution on X.
 
-Sparko is an independent open-source project and is not affiliated with, endorsed by, or sponsored by X Corp.
+![Sparko demo dashboard](./docs/assets/sparko-demo.png)
+
+The demo screenshot uses fictional `Example Studio` data only. Sparko is independent and is not affiliated with, endorsed by, or sponsored by X Corp.
 
 ## How Sparko Is Different from Other Tools
 
@@ -34,7 +36,42 @@ Sparko works in the opposite direction. It starts from your identity, your compa
 - Scheduled posts that publish through your connected X account.
 - A lightweight workflow for keeping founder-led or team-led posting consistent without turning the account into a copy of someone else's voice.
 
+## Before / After
+
+| Raw input | Sparko-style draft |
+| --- | --- |
+| We shipped approval before scheduling. | The best AI workflow feature we shipped this week was not generation. It was the pause before publishing. Teams trust automation faster when the system knows where human judgment belongs. |
+| Customer said they do not want another content calendar. | A lot of teams do not have a posting problem. They have a context problem. The calendar is empty because nobody has turned the week's real work into clear points of view yet. |
+| Founder wants to talk about why copying viral posts fails. | Copying a viral post often copies the surface area and misses the reason it worked. Voice, timing, scars, audience trust - those are the parts that do not fit in a template. |
+| Engineer fixed queue fallback for overdue posts. | The boring part of scheduled publishing matters most: what happens when a job is missed, delayed, retried, or needs a clear audit trail. Reliability is a content feature when the workflow touches a real account. |
+| Team learned that product posts perform better with concrete examples. | Product posts get sharper when they stop saying "workflow" and start showing the moment a user recognizes themselves. Specific beats polished almost every time. |
+
 ## Quick Start
+
+Requirements:
+
+- Node.js 20+
+- npm
+- Docker Desktop or a Docker-compatible runtime
+- An X Developer app if you want to connect and publish through real X accounts
+- An OpenAI, xAI, Anthropic, or other compatible LLM API key if you want live AI generation
+
+Install dependencies and start the full local demo:
+
+```bash
+npm install
+npm run demo
+```
+
+`npm run demo` prepares `.env.local` if it does not exist, starts Postgres and Redis through Docker Compose, generates Prisma client code, applies migrations, seeds fictional `Example Studio` data, then runs the Next.js app and scheduled publishing worker.
+
+Open `http://localhost:3000`.
+
+Stop the demo with `Ctrl+C`.
+
+## Manual Setup
+
+Use these commands when you want more control than `npm run demo`:
 
 ```bash
 npm install
@@ -46,9 +83,7 @@ npm run prisma:seed
 npm run dev
 ```
 
-Open `http://localhost:3000`.
-
-Run the worker in a second terminal so scheduled posts can publish at their scheduled time:
+Run the worker in a second terminal:
 
 ```bash
 npm run worker
@@ -56,21 +91,29 @@ npm run worker
 
 ## Environment
 
-Fill `.env.local` with your own credentials:
+Fill `.env.local` with credentials for the services you actually use.
+
+Core local defaults:
 
 ```env
 NEXT_PUBLIC_APP_URL=http://localhost:3000
 DATABASE_URL=postgresql://xposter:xposter@localhost:5432/xposter?schema=public
 REDIS_URL=redis://localhost:6379
+```
 
+X publishing:
+
+```env
 X_CLIENT_ID=
 X_CLIENT_SECRET=
 X_REDIRECT_URI=http://localhost:3000/api/x/oauth/callback
 X_BEARER_TOKEN=
+```
 
-# Pick one AI provider: openai, xai, or claude
+AI drafting:
+
+```env
 DRAFT_AI_PROVIDER=openai
-
 OPENAI_API_KEY=
 OPENAI_DRAFT_MODEL=gpt-5-mini
 OPENAI_STRATEGY_MODEL=gpt-5.1
@@ -86,80 +129,22 @@ ANTHROPIC_DRAFT_MODEL=claude-sonnet-4-20250514
 ANTHROPIC_STRATEGY_MODEL=claude-sonnet-4-20250514
 ```
 
+Only the selected AI provider needs a key. Replace model names with models available to your provider account.
+
 Do not commit `.env`, `.env.local`, database dumps, logs, screenshots with tokens, or generated build output.
-
-## AI Provider Setup
-
-Sparko can use OpenAI, xAI/Grok, or Anthropic/Claude for draft generation, account input prompts, and company context extraction.
-
-Set `DRAFT_AI_PROVIDER` to one of:
-
-- `openai`: fill `OPENAI_API_KEY`, `OPENAI_DRAFT_MODEL`, and `OPENAI_STRATEGY_MODEL`
-- `xai`: fill `XAI_API_KEY`, `XAI_BASE_URL`, `XAI_DRAFT_MODEL`, and `XAI_STRATEGY_MODEL`
-- `claude`: fill `ANTHROPIC_API_KEY`, `ANTHROPIC_BASE_URL`, `ANTHROPIC_DRAFT_MODEL`, and `ANTHROPIC_STRATEGY_MODEL`
-- another LLM API of your choice: add or adapt a provider adapter in `src/lib/openai.ts`
-
-Only the selected provider needs a key. The model values in `.env.example` are examples; replace them with models available to your own provider account.
-
-These AI provider keys are separate from X API keys. X OAuth controls account connection and publishing. The AI provider controls drafting and context extraction.
-
-Different models write very differently. Try a few providers and models until you find the voice that fits your account.
-
-At the time of release, the builder's favorite writing model is `gpt-5.5` because it tends to articulate sharper opinions and more thoughtful post angles. It may cost more than smaller models, so check your provider's current pricing and usage limits before making it your default.
 
 ## X Developer App Setup
 
-Create an app in the X Developer Portal and configure it for the account that will run this local instance.
+Create an app in the X Developer Portal and configure it for the account that will run your local Sparko instance.
 
 - App type: `Web App, Automated App or Bot`
 - App permissions: `Read and write`
 - OAuth 2.0 callback URL: `http://localhost:3000/api/x/oauth/callback`
 - OAuth scopes used by Sparko: `tweet.read tweet.write users.read offline.access`
 
-After the app is configured, start Sparko and click `Connect X` / `Add Another X Account`. Each user connects their own X account through OAuth; do not paste personal user tokens into source files.
+After the app is configured, start Sparko and click `Connect X` or `Add Another X Account`. Each user connects their own X account through OAuth.
 
 `X_BEARER_TOKEN` is optional and only used for read-only discovery/search style features. Publishing uses the OAuth user token stored in your own database after Connect X.
-
-## Database and Demo Data
-
-`npm run prisma:seed` creates fictional `Example Studio` records so the UI is understandable on first launch. The demo records are not real companies, accounts, posts, or X URLs.
-
-To reset local data before publishing your own fork or before sharing a clean demo:
-
-```bash
-docker compose down -v
-docker compose up -d
-npm run prisma:migrate
-npm run prisma:seed
-```
-
-This deletes local Postgres data, including connected X accounts, OAuth tokens, scheduled posts, published posts, metrics, and audit logs.
-
-If you want a clean demo database while keeping your existing local data, run a separate clean stack on different ports:
-
-```bash
-docker compose -p sparko-clean -f docker-compose.clean.yml up -d
-DATABASE_URL="postgresql://xposter:xposter@localhost:55432/xposter?schema=public" npm run prisma:migrate
-DATABASE_URL="postgresql://xposter:xposter@localhost:55432/xposter?schema=public" npm run prisma:seed
-```
-
-Then start Sparko against the clean stack:
-
-```bash
-DATABASE_URL="postgresql://xposter:xposter@localhost:55432/xposter?schema=public" \
-REDIS_URL="redis://localhost:56379" \
-npm run dev
-```
-
-In another terminal, run the clean worker:
-
-```bash
-DATABASE_URL="postgresql://xposter:xposter@localhost:55432/xposter?schema=public" \
-REDIS_URL="redis://localhost:56379" \
-npm run worker
-```
-
-This does not touch the default `docker-compose.yml` volumes or the data behind `localhost:5432`.
 
 ## Workflow
 
@@ -167,17 +152,40 @@ This does not touch the default `docker-compose.yml` volumes or the data behind 
 2. Fill Account Info and Company Info.
 3. Add weekly inputs or write a post brief.
 4. Generate draft options.
-5. Keep drafts into Review Queue.
+5. Keep drafts into the Review Queue.
 6. Approve, schedule, reschedule, or cancel posts.
-7. Keep the worker running for real scheduled publishing.
+7. Keep the worker running for scheduled publishing.
 
 ## Safety Defaults
 
 - Drafts require approval before scheduling.
+- Edited approved drafts return to review before scheduling.
 - Scheduled posts are published by the worker, not by browser automation.
 - The worker scans for overdue queued posts as a fallback if a queue job is missed.
 - OAuth tokens are stored in your own database and must never be committed.
-- Demo mode uses fictional data and does not publish to X.
+- Demo data is fictional and does not represent real companies, accounts, posts, or X URLs.
+
+## Contributing
+
+Contributions are welcome, especially focused improvements to setup, documentation, role-specific templates, demo data, and the review/scheduling workflow.
+
+- Read [CONTRIBUTING.md](CONTRIBUTING.md).
+- Browse [docs/GOOD_FIRST_ISSUES.md](docs/GOOD_FIRST_ISSUES.md).
+- Read [SECURITY.md](SECURITY.md) before reporting vulnerabilities.
+- Follow [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
+
+Useful labels for maintainers:
+
+- `good first issue`
+- `help wanted`
+- `bug`
+- `feature`
+- `documentation`
+- `question`
+
+## FAQ
+
+See [docs/FAQ.md](docs/FAQ.md).
 
 ## Verification
 
@@ -187,10 +195,37 @@ npm test
 npm run build
 ```
 
-Before creating the first public commit, run a local audit:
+Before publishing a fork or public screenshot, run a local audit:
 
 ```bash
 rg -n "OPENAI_API_KEY=sk-|XAI_API_KEY=.+|ANTHROPIC_API_KEY=.+|X_CLIENT_SECRET=.+|X_BEARER_TOKEN=.+|access_token|refresh_token" --glob '!node_modules/**' --glob '!.next/**'
 ```
 
-Expected results should be code identifiers or empty example placeholders only, never real token values or real account/post records. Also run the same search with any real handles, user ids, and post ids you used locally before creating a public commit.
+Expected results should be code identifiers or empty example placeholders only, never real token values or real account/post records. Also search for any real handles, user ids, and post ids you used locally.
+
+## GitHub Launch Checklist
+
+Repository description:
+
+```text
+Open-source X growth console for founder-led growth, team-led growth, and building in public.
+```
+
+Recommended topics:
+
+```text
+twitter, social-media, content-creation, personal-branding, founder-led-growth, team-led-growth, growth-marketing, build-in-public, open-source, nextjs, typescript, llm, prisma
+```
+
+Recommended Discussions categories:
+
+- Showcase posts
+- Contributor help
+- Release announcements
+- Ideas and votes
+
+## License
+
+Sparko is released under the [MIT License](LICENSE).
+
+Star Sparko if you want the open-source playbook for turning raw ideas, weekly inputs, and company context into high-performing X posts with human review.

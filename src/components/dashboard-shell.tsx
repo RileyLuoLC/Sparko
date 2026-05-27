@@ -338,7 +338,7 @@ function AppFrame({ mode, children }: { mode: "console" | "background"; children
               </Link>
             </div>
             <p className="sidebar-shoutout">
-              If you like this tool, please give us a shoutout on X and tag @RileyLuoLC.
+              If Sparko helps, star the repo and share what you build with it.
             </p>
           </nav>
 

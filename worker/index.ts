@@ -1,4 +1,4 @@
-import * as nextEnv from "@next/env";
+import nextEnv from "@next/env";
 
 nextEnv.loadEnvConfig(process.cwd());
 

@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "next dev -p 3000",
+    "demo": "node scripts/demo.mjs",
     "build": "next build",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
