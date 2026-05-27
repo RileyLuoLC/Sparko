@@ -2,9 +2,9 @@
 
 GrandX is an open-source console for builders, founders, and teams shaping their presence on X through personal branding, founder-led growth, team-led growth, and building in public.
 
-Most builders know they should post more. The hard part is knowing what to say every day: what will attract the right audience, carry a real point of view, and still give readers something useful. GrandX turns account identity, company context, weekly inputs, and post briefs into draft options you can review, edit, schedule, and publish with human approval in the loop. The goal is to help you publish authentic, organic, useful posts that fit your role, attract the audience you want, and compound into a profile worth following.
+Most builders know they should post more. The hard part is knowing what to say every day: what will attract the right audience, carry a real point of view, and still give readers something useful. GrandX turns account identity, company context, weekly inputs, and post briefs into draft options you can review, edit, schedule, and publish with human approval in the loop.
 
-The drafting workflow is designed around formats and structures that tend to perform well on X, so rough notes, weekly updates, and company context can become posts that feel native to the feed.
+The drafting workflow is designed around formats and structures that tend to perform well on X, so rough notes, weekly updates, and company context can become posts that feel native to the feed. The goal is to find the perfect balance between publishing authentic, organic, useful posts that fit your role, attract the audience you want, and compound into a profile worth following - while creating content that sparks discussion, earns engagement, gets reposted, and spreads on X.
 
 Each installation uses the operator's own X Developer app, X accounts, API keys, database, and Redis queue. The repository ships with fictional `Example Studio` demo data only.
 
