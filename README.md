@@ -16,6 +16,32 @@ Each installation uses the operator's own X Developer app, X accounts, API keys,
 - Approve, schedule, reschedule, cancel, and publish through your own connected X account.
 - Keep control of your own API keys, database, OAuth tokens, and publishing workflow.
 
+## How It Is Different
+
+Many X posting tools start from the market: they show high-performing posts, let you save them, and ask you to imitate the pattern.
+
+That can be useful for learning formats, but it is hard to turn into authentic growth. A line that works for a large creator, a famous founder, or a specific operator often works because of who said it, what they have lived through, and why their audience already trusts them. If your account only repeats what performed for someone else, it becomes harder to build a recognizable voice, a reason to follow, or a reason for the right people to start conversations with you.
+
+GrandX works in the opposite direction. It starts from your identity, your company, your weekly reality, and the outcome you want: founder-led growth, team-led growth, personal branding, or building in public. Market signals can still inform what kinds of posts tend to work for people in a similar role, but the final draft is meant to sound like something you or your team could actually say.
+
+The goal is not to copy high-performing posts. The goal is to help you publish authentic, organic, useful posts that fit your role, attract the audience you want, and compound into a profile worth following.
+
+## What You Provide
+
+- Connected X accounts through your own X Developer app.
+- Account identity: role, tone, audience, content pillars, and optional guardrails.
+- Company information: product, positioning, industry, competitive advantage, and other context worth using.
+- Weekly inputs: what you learned, shipped, noticed, struggled with, or heard from customers this week.
+- Optional post briefs when you already know the angle you want to explore.
+
+## What GrandX Produces
+
+- Draft options shaped around your account identity and current context.
+- Role-aware prompts that help teams collect better weekly posting inputs.
+- Review queue drafts that can be edited before approval.
+- Scheduled posts that publish through your connected X account.
+- A lightweight workflow for keeping founder-led or team-led posting consistent without turning the account into a copy of someone else's voice.
+
 ## Quick Start
 
 ```bash
