@@ -100,19 +100,19 @@ Beginner
 Acceptance criteria:
 The FAQ entries are short, accurate, and linked from README.
 
-## 8. Add a screenshot refresh guide
+## 8. Add a demo asset creation guide
 
 Expected:
-Document how maintainers should refresh `docs/assets/sparko-demo.png` using fictional demo data.
+Document how maintainers should create a polished demo GIF, short video, or screenshot using fictional demo data.
 
 Files:
-`docs/FAQ.md`, `docs/ROADMAP.md`
+`docs/FAQ.md`, `README.md`
 
 Difficulty:
 Beginner
 
 Acceptance criteria:
-The guide warns against real accounts, tokens, browser extensions, and private data in screenshots.
+The guide describes the intended demo story, warns against real accounts, tokens, browser extensions, and private data, and only adds the asset to README after it is polished enough for a public first impression.
 
 ## 9. Add tests for schedule interval validation
 

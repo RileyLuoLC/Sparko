@@ -8,9 +8,7 @@ The drafting workflow is designed around formats and structures that tend to per
 
 Star Sparko if you're building your brand, audience, or distribution on X.
 
-![Sparko demo dashboard](./docs/assets/sparko-demo.png)
-
-The demo screenshot uses fictional `Example Studio` data only. Sparko is independent and is not affiliated with, endorsed by, or sponsored by X Corp.
+Sparko is independent and is not affiliated with, endorsed by, or sponsored by X Corp.
 
 ## How Sparko Is Different from Other Tools
 
