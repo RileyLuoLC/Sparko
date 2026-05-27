@@ -8,8 +8,6 @@ The drafting workflow is designed around formats and structures that tend to per
 
 Star Sparko if you're building your brand, audience, or distribution on X.
 
-Sparko is independent and is not affiliated with, endorsed by, or sponsored by X Corp.
-
 ## How Sparko Is Different from Other Tools
 
 Many X posting tools start from the market: they show high-performing posts, which you can save and imitate.
@@ -226,4 +224,6 @@ Recommended Discussions categories:
 
 Sparko is released under the [MIT License](LICENSE).
 
-Star Sparko if you want the open-source playbook for turning raw ideas, weekly inputs, and company context into high-performing X posts with human review.
+Sparko is independent and is not affiliated with, endorsed by, or sponsored by X Corp.
+
+Star Sparko if you want the open-source playbook for turning raw ideas, weekly inputs, and company context into high-performing X posts.
