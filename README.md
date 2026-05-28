@@ -10,7 +10,13 @@ Most builders know they should post more. The hard part is knowing what to say e
 
 Sparko helps turn messy day-to-day context into a repeatable publishing workflow for personal branding, founder-led growth, team-led growth, and building in public.
 
-## How It Works
+## Why Sparko
+
+The drafting workflow is designed around formats and structures that tend to perform well on X, so rough notes, weekly updates, and company context can become posts that feel native to the feed.
+
+The goal is to find the perfect balance between publishing authentic, organic, useful posts that fit your role, attract the audience you want, and compound into a profile worth following — while creating content that sparks discussion, earns engagement, gets reposted, and spreads on X.
+
+## The Workflow
 
 1. Define your account identity
 2. Add company context
@@ -18,12 +24,6 @@ Sparko helps turn messy day-to-day context into a repeatable publishing workflow
 4. Generate draft options
 5. Review, edit, approve
 6. Schedule and publish
-
-## How Sparko Drafts
-
-The drafting workflow is designed around formats and structures that tend to perform well on X, so rough notes, weekly updates, and company context can become posts that feel native to the feed.
-
-The goal is to find the perfect balance between publishing authentic, organic, useful posts that fit your role, attract the audience you want, and compound into a profile worth following — while creating content that sparks discussion, earns engagement, gets reposted, and spreads on X.
 
 ## Quick Start
 
