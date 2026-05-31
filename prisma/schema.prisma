@@ -91,6 +91,8 @@ model Workspace {
   xAccounts              XAccount[]
   personas               Persona[]
   companyMaterials       CompanyMaterial[]
+  roleInputTemplates     RoleInputTemplate[]
+  weeklyRoleInputs       WeeklyRoleInput[]
   watchlistAccounts      WatchlistAccount[]
   trendSnapshots         TrendSnapshot[]
   sourcePosts            SourcePost[]
@@ -139,6 +141,7 @@ model XAccount {
   scheduledPosts     ScheduledPost[]
   metricsSnapshots   MetricsSnapshot[]
   interactionSuggestions InteractionSuggestion[]
+  weeklyRoleInputs   WeeklyRoleInput[]
 
   @@unique([workspaceId, xUserId])
 }
@@ -174,6 +177,42 @@ model CompanyMaterial {
   workspace   Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@index([workspaceId, updatedAt])
+}
+
+model RoleInputTemplate {
+  id          String    @id @default(cuid())
+  workspaceId String
+  roleName    String
+  contentType String
+  prompt      String
+  example     String?
+  isDefault   Boolean   @default(false)
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, roleName, contentType])
+  @@index([workspaceId, updatedAt])
+}
+
+model WeeklyRoleInput {
+  id                  String    @id @default(cuid())
+  workspaceId         String
+  xAccountId          String
+  roleInputTemplateId String
+  roleName            String
+  contentType         String
+  content             String
+  evidenceUrl         String?
+  weekOf              DateTime
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+  workspace           Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  xAccount            XAccount  @relation(fields: [xAccountId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, weekOf])
+  @@index([xAccountId, weekOf])
 }
 
 model WatchlistAccount {

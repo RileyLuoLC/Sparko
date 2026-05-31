@@ -1,6 +1,11 @@
 import { z } from "zod";
 import { deleteWeeklyRoleInput, updateWeeklyRoleInput } from "@/lib/demo-store";
 import { jsonError, jsonOk, readJson, routeParam } from "@/lib/http";
+import {
+  deleteWeeklyRoleInputInPrisma,
+  isPrismaStoreConfigured,
+  updateWeeklyRoleInputInPrisma
+} from "@/lib/prisma-store";
 
 const WeeklyInputUpdateSchema = z.object({
   xAccountId: z.string().min(1).optional(),
@@ -14,7 +19,10 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
   try {
     const id = await routeParam(context, "id");
     const body = WeeklyInputUpdateSchema.parse(await readJson(request));
-    return jsonOk({ weeklyInput: updateWeeklyRoleInput(id, body) });
+    const weeklyInput = isPrismaStoreConfigured()
+      ? await updateWeeklyRoleInputInPrisma(id, body)
+      : updateWeeklyRoleInput(id, body);
+    return jsonOk({ weeklyInput });
   } catch (error) {
     return jsonError(error);
   }
@@ -23,7 +31,8 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
 export async function DELETE(_request: Request, context: { params: Promise<{ id: string }> }) {
   try {
     const id = await routeParam(context, "id");
-    return jsonOk({ weeklyInput: deleteWeeklyRoleInput(id) });
+    const weeklyInput = isPrismaStoreConfigured() ? await deleteWeeklyRoleInputInPrisma(id) : deleteWeeklyRoleInput(id);
+    return jsonOk({ weeklyInput });
   } catch (error) {
     return jsonError(error);
   }

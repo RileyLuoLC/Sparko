@@ -13,7 +13,13 @@ export async function POST(request: Request) {
   try {
     const body = BriefDraftSchema.parse(await readJson(request));
     if (isPrismaStoreConfigured()) {
-      return jsonOk(await acceptBriefAsDraftInPrisma({ text: body.text, accountId: body.xAccountId }));
+      return jsonOk(
+        await acceptBriefAsDraftInPrisma({
+          text: body.text,
+          accountId: body.xAccountId,
+          weeklyInputIds: body.weeklyInputIds
+        })
+      );
     }
 
     const refs = getEntityRefs();

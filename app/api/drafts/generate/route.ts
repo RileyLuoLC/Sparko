@@ -16,7 +16,7 @@ export async function POST(request: Request) {
   try {
     const body = GenerateSchema.parse(await readJson(request));
     if (isPrismaStoreConfigured()) {
-      const refs = await getGenerationContextFromPrisma(body.xAccountId);
+      const refs = await getGenerationContextFromPrisma(body.xAccountId, body.weeklyInputIds ?? []);
       const requestedCount = body.count ?? 1;
       const result = await generateDraftCandidates({
         persona: refs.persona,

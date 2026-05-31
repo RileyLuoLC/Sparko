@@ -32,9 +32,11 @@ import type {
   InteractionContext,
   InteractionSuggestion,
   Persona,
+  RoleInputTemplate,
   ScheduledPost,
   SourcePost,
   TrendSnapshot,
+  WeeklyRoleInput,
   XAccount
 } from "./types";
 
@@ -50,6 +52,10 @@ export function isPrismaStoreConfigured() {
 
 function toIso(value: Date | string) {
   return new Date(value).toISOString();
+}
+
+function toDateOnly(value: Date | string) {
+  return new Date(value).toISOString().slice(0, 10);
 }
 
 function publicXAccount(account: any): XAccount {
@@ -129,6 +135,45 @@ function publicCompanyMaterial(material: any): CompanyMaterial {
     createdAt: toIso(material.createdAt),
     updatedAt: toIso(material.updatedAt)
   };
+}
+
+function publicRoleInputTemplate(template: any): RoleInputTemplate {
+  return {
+    id: template.id,
+    workspaceId: template.workspaceId,
+    roleName: template.roleName,
+    contentType: template.contentType,
+    prompt: template.prompt,
+    example: template.example ?? undefined,
+    isDefault: template.isDefault,
+    isActive: template.isActive,
+    createdAt: toIso(template.createdAt),
+    updatedAt: toIso(template.updatedAt)
+  };
+}
+
+function publicWeeklyRoleInput(input: any): WeeklyRoleInput {
+  return {
+    id: input.id,
+    workspaceId: input.workspaceId,
+    xAccountId: input.xAccountId,
+    roleInputTemplateId: input.roleInputTemplateId,
+    roleName: input.roleName,
+    contentType: input.contentType,
+    content: input.content,
+    evidenceUrl: input.evidenceUrl ?? undefined,
+    weekOf: toDateOnly(input.weekOf),
+    createdAt: toIso(input.createdAt),
+    updatedAt: toIso(input.updatedAt)
+  };
+}
+
+function mergeRoleInputTemplates(defaultTemplates: RoleInputTemplate[], customTemplates: RoleInputTemplate[]) {
+  const customKeys = new Set(customTemplates.map((template) => `${template.roleName}::${template.contentType}`));
+  return [
+    ...customTemplates,
+    ...defaultTemplates.filter((template) => !customKeys.has(`${template.roleName}::${template.contentType}`))
+  ];
 }
 
 function publicSourcePost(post: any): SourcePost {
@@ -370,7 +415,9 @@ export async function getDashboardDataFromPrisma(): Promise<DashboardData> {
     interactions,
     metrics,
     auditLogs,
-    companyMaterials
+    companyMaterials,
+    roleInputTemplates,
+    weeklyInputs
   ] = await Promise.all([
     prisma.persona.findMany({ where: { workspaceId: workspace.id }, orderBy: { updatedAt: "desc" } }),
     prisma.xAccount.findMany({ where: { workspaceId: workspace.id }, include: { persona: true }, orderBy: { updatedAt: "desc" } }),
@@ -382,9 +429,16 @@ export async function getDashboardDataFromPrisma(): Promise<DashboardData> {
     prisma.interactionSuggestion.findMany({ where: { workspaceId: workspace.id }, orderBy: { updatedAt: "desc" }, take: 80 }),
     prisma.metricsSnapshot.findMany({ where: { xAccount: { workspaceId: workspace.id } }, orderBy: { capturedAt: "desc" }, take: 80 }),
     prisma.auditLog.findMany({ where: { workspaceId: workspace.id }, orderBy: { createdAt: "desc" }, take: 20 }),
-    prisma.companyMaterial.findMany({ where: { workspaceId: workspace.id }, orderBy: { updatedAt: "desc" }, take: 20 })
+    prisma.companyMaterial.findMany({ where: { workspaceId: workspace.id }, orderBy: { updatedAt: "desc" }, take: 20 }),
+    prisma.roleInputTemplate.findMany({ where: { workspaceId: workspace.id }, orderBy: { updatedAt: "desc" }, take: 80 }),
+    prisma.weeklyRoleInput.findMany({
+      where: { workspaceId: workspace.id },
+      orderBy: [{ weekOf: "desc" }, { createdAt: "desc" }],
+      take: 80
+    })
   ]);
   const demoDefaults = getDemoDashboardData();
+  const customRoleInputTemplates = roleInputTemplates.map(publicRoleInputTemplate);
 
   return {
     workspace,
@@ -393,8 +447,8 @@ export async function getDashboardDataFromPrisma(): Promise<DashboardData> {
     xAccounts: xAccounts.map(publicXAccount),
     watchlistAccounts: [],
     companyMaterials: companyMaterials.map(publicCompanyMaterial),
-    roleInputTemplates: demoDefaults.roleInputTemplates,
-    weeklyInputs: [],
+    roleInputTemplates: mergeRoleInputTemplates(demoDefaults.roleInputTemplates, customRoleInputTemplates),
+    weeklyInputs: weeklyInputs.map(publicWeeklyRoleInput),
     trends: trends.map(publicTrend),
     sourcePosts: sourcePosts.map(publicSourcePost),
     drafts: drafts.map(publicDraft),
@@ -608,7 +662,7 @@ export async function updatePersonaStrategyInPrisma(
   };
 }
 
-export async function getGenerationContextFromPrisma(xAccountId?: string) {
+export async function getGenerationContextFromPrisma(xAccountId?: string, weeklyInputIds: string[] = []) {
   const { workspace } = await ensureWorkspace();
   const account =
     (xAccountId ? await prisma.xAccount.findUnique({ where: { id: xAccountId } }) : null) ??
@@ -622,6 +676,18 @@ export async function getGenerationContextFromPrisma(xAccountId?: string) {
     orderBy: { updatedAt: "desc" },
     take: 20
   });
+  const weeklyInputs =
+    weeklyInputIds.length > 0
+      ? await prisma.weeklyRoleInput.findMany({
+          where: {
+            workspaceId: workspace.id,
+            xAccountId: account.id,
+            id: { in: weeklyInputIds }
+          },
+          orderBy: [{ weekOf: "desc" }, { createdAt: "desc" }],
+          take: 8
+        })
+      : [];
 
   return {
     account: publicXAccount({ ...account, persona }),
@@ -648,7 +714,7 @@ export async function getGenerationContextFromPrisma(xAccountId?: string) {
       createdAt: toIso(material.createdAt),
       updatedAt: toIso(material.updatedAt)
     })),
-    weeklyInputs: []
+    weeklyInputs: weeklyInputs.map(publicWeeklyRoleInput)
   };
 }
 
@@ -702,6 +768,210 @@ export async function deleteCompanyMaterialInPrisma(materialId: string) {
   const material = await prisma.companyMaterial.delete({ where: { id: materialId } });
   await audit("company_material.deleted", "CompanyMaterial", material.id, { title: material.title, type: material.type });
   return publicCompanyMaterial(material);
+}
+
+async function resolveRoleInputTemplate(workspaceId: string, templateId: string) {
+  const customTemplate = await prisma.roleInputTemplate.findFirst({
+    where: { id: templateId, workspaceId }
+  });
+  if (customTemplate) {
+    return publicRoleInputTemplate(customTemplate);
+  }
+
+  const defaultTemplate = getDemoDashboardData().roleInputTemplates.find((template) => template.id === templateId);
+  if (!defaultTemplate) {
+    throw new Error("Role input template not found.");
+  }
+  return defaultTemplate;
+}
+
+function parseWeekOf(value: string) {
+  const date = new Date(`${value}T00:00:00.000Z`);
+  if (Number.isNaN(date.getTime())) {
+    throw new Error("Week date is invalid.");
+  }
+  return date;
+}
+
+export async function addRoleInputTemplateInPrisma(input: {
+  roleName: string;
+  contentType: string;
+  prompt: string;
+  example?: string;
+  isActive?: boolean;
+}) {
+  const { workspace } = await ensureWorkspace();
+  const roleName = input.roleName.trim();
+  const contentType = input.contentType.trim();
+  const template = await prisma.roleInputTemplate.upsert({
+    where: {
+      workspaceId_roleName_contentType: {
+        workspaceId: workspace.id,
+        roleName,
+        contentType
+      }
+    },
+    update: {
+      prompt: input.prompt.trim(),
+      example: input.example?.trim() || null,
+      isActive: input.isActive ?? true
+    },
+    create: {
+      workspaceId: workspace.id,
+      roleName,
+      contentType,
+      prompt: input.prompt.trim(),
+      example: input.example?.trim() || null,
+      isActive: input.isActive ?? true
+    }
+  });
+  await audit("role_input_template.upserted", "RoleInputTemplate", template.id, { roleName, contentType });
+  return publicRoleInputTemplate(template);
+}
+
+export async function updateRoleInputTemplateInPrisma(
+  templateId: string,
+  input: Partial<{
+    roleName: string;
+    contentType: string;
+    prompt: string;
+    example: string;
+    isActive: boolean;
+  }>
+) {
+  const { workspace } = await ensureWorkspace();
+  const existing = await prisma.roleInputTemplate.findFirst({ where: { id: templateId, workspaceId: workspace.id } });
+  if (!existing) {
+    throw new Error("Only custom role input templates can be edited in real mode.");
+  }
+
+  const template = await prisma.roleInputTemplate.update({
+    where: { id: existing.id },
+    data: {
+      ...(input.roleName !== undefined ? { roleName: input.roleName.trim() } : {}),
+      ...(input.contentType !== undefined ? { contentType: input.contentType.trim() } : {}),
+      ...(input.prompt !== undefined ? { prompt: input.prompt.trim() } : {}),
+      ...(input.example !== undefined ? { example: input.example.trim() || null } : {}),
+      ...(input.isActive !== undefined ? { isActive: input.isActive } : {})
+    }
+  });
+  await audit("role_input_template.updated", "RoleInputTemplate", template.id, {
+    roleName: template.roleName,
+    contentType: template.contentType
+  });
+  return publicRoleInputTemplate(template);
+}
+
+export async function deleteRoleInputTemplateInPrisma(templateId: string) {
+  const { workspace } = await ensureWorkspace();
+  const existing = await prisma.roleInputTemplate.findFirst({ where: { id: templateId, workspaceId: workspace.id } });
+  if (!existing) {
+    throw new Error("Only custom role input templates can be deleted in real mode.");
+  }
+
+  const template = await prisma.roleInputTemplate.delete({ where: { id: existing.id } });
+  await audit("role_input_template.deleted", "RoleInputTemplate", template.id, {
+    roleName: template.roleName,
+    contentType: template.contentType
+  });
+  return publicRoleInputTemplate(template);
+}
+
+export async function addWeeklyRoleInputInPrisma(input: {
+  xAccountId: string;
+  roleInputTemplateId: string;
+  content: string;
+  evidenceUrl?: string;
+  weekOf: string;
+}) {
+  const { workspace } = await ensureWorkspace();
+  const account = await prisma.xAccount.findFirst({ where: { id: input.xAccountId, workspaceId: workspace.id } });
+  if (!account) {
+    throw new Error("X account not found.");
+  }
+  const template = await resolveRoleInputTemplate(workspace.id, input.roleInputTemplateId);
+  const weeklyInput = await prisma.weeklyRoleInput.create({
+    data: {
+      workspaceId: workspace.id,
+      xAccountId: account.id,
+      roleInputTemplateId: template.id,
+      roleName: template.roleName,
+      contentType: template.contentType,
+      content: input.content.trim(),
+      evidenceUrl: input.evidenceUrl?.trim() || null,
+      weekOf: parseWeekOf(input.weekOf)
+    }
+  });
+  await audit("weekly_input.created", "WeeklyRoleInput", weeklyInput.id, {
+    xAccountId: weeklyInput.xAccountId,
+    roleName: weeklyInput.roleName,
+    contentType: weeklyInput.contentType
+  });
+  return publicWeeklyRoleInput(weeklyInput);
+}
+
+export async function updateWeeklyRoleInputInPrisma(
+  weeklyInputId: string,
+  input: Partial<{
+    roleInputTemplateId: string;
+    xAccountId: string;
+    content: string;
+    evidenceUrl: string;
+    weekOf: string;
+  }>
+) {
+  const { workspace } = await ensureWorkspace();
+  const existing = await prisma.weeklyRoleInput.findFirst({ where: { id: weeklyInputId, workspaceId: workspace.id } });
+  if (!existing) {
+    throw new Error("Weekly input not found.");
+  }
+
+  const account = input.xAccountId
+    ? await prisma.xAccount.findFirst({ where: { id: input.xAccountId, workspaceId: workspace.id } })
+    : undefined;
+  if (input.xAccountId && !account) {
+    throw new Error("X account not found.");
+  }
+  const template = input.roleInputTemplateId
+    ? await resolveRoleInputTemplate(workspace.id, input.roleInputTemplateId)
+    : undefined;
+
+  const weeklyInput = await prisma.weeklyRoleInput.update({
+    where: { id: existing.id },
+    data: {
+      ...(account ? { xAccountId: account.id } : {}),
+      ...(template
+        ? {
+            roleInputTemplateId: template.id,
+            roleName: template.roleName,
+            contentType: template.contentType
+          }
+        : {}),
+      ...(input.content !== undefined ? { content: input.content.trim() } : {}),
+      ...(input.evidenceUrl !== undefined ? { evidenceUrl: input.evidenceUrl.trim() || null } : {}),
+      ...(input.weekOf !== undefined ? { weekOf: parseWeekOf(input.weekOf) } : {})
+    }
+  });
+  await audit("weekly_input.updated", "WeeklyRoleInput", weeklyInput.id, {
+    roleName: weeklyInput.roleName,
+    contentType: weeklyInput.contentType
+  });
+  return publicWeeklyRoleInput(weeklyInput);
+}
+
+export async function deleteWeeklyRoleInputInPrisma(weeklyInputId: string) {
+  const { workspace } = await ensureWorkspace();
+  const existing = await prisma.weeklyRoleInput.findFirst({ where: { id: weeklyInputId, workspaceId: workspace.id } });
+  if (!existing) {
+    throw new Error("Weekly input not found.");
+  }
+
+  const weeklyInput = await prisma.weeklyRoleInput.delete({ where: { id: existing.id } });
+  await audit("weekly_input.deleted", "WeeklyRoleInput", weeklyInput.id, {
+    roleName: weeklyInput.roleName,
+    contentType: weeklyInput.contentType
+  });
+  return publicWeeklyRoleInput(weeklyInput);
 }
 
 export async function addDraftsInPrisma(
@@ -770,8 +1040,28 @@ export async function acceptDraftCandidateInPrisma(input: { candidate: Generated
   return { draft };
 }
 
-export async function acceptBriefAsDraftInPrisma(input: { text: string; accountId: string }) {
-  const text = normalizePostWhitespace(input.text);
+export async function acceptBriefAsDraftInPrisma(input: { text: string; accountId: string; weeklyInputIds?: string[] }) {
+  let text = normalizePostWhitespace(input.text);
+  if (!text && input.weeklyInputIds?.length) {
+    const account = await prisma.xAccount.findUnique({ where: { id: input.accountId } });
+    if (!account) {
+      throw new Error("X account not found.");
+    }
+    const weeklyInputs = await prisma.weeklyRoleInput.findMany({
+      where: {
+        workspaceId: account.workspaceId,
+        xAccountId: account.id,
+        id: { in: input.weeklyInputIds }
+      },
+      orderBy: [{ weekOf: "desc" }, { createdAt: "desc" }]
+    });
+    text = normalizePostWhitespace(
+      weeklyInputs
+        .map((weeklyInput) => weeklyInput.content.trim())
+        .filter(Boolean)
+        .join("\n\n")
+    );
+  }
   if (!text) {
     throw new Error("Add a post brief or select at least one weekly input.");
   }

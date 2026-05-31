@@ -2,6 +2,7 @@ import { z } from "zod";
 import { addRoleInputTemplate } from "@/lib/demo-store";
 import { jsonError, jsonOk, readJson } from "@/lib/http";
 import { generateRoleInputTemplatePrompt } from "@/lib/openai";
+import { addRoleInputTemplateInPrisma, isPrismaStoreConfigured } from "@/lib/prisma-store";
 
 const SETUP_PLACEHOLDER_ROLES = new Set(["Operator", "Needs setup"]);
 const ActualRoleNameSchema = z.string().min(1).max(80).refine((role) => !SETUP_PLACEHOLDER_ROLES.has(role), "Select an actual role.");
@@ -22,12 +23,15 @@ export async function POST(request: Request) {
       about: body.about
     });
 
-    const template = addRoleInputTemplate({
+    const templateInput = {
       roleName: body.roleName,
       contentType: body.contentType,
       prompt: result.prompt,
       isActive: body.isActive ?? true
-    });
+    };
+    const template = isPrismaStoreConfigured()
+      ? await addRoleInputTemplateInPrisma(templateInput)
+      : addRoleInputTemplate(templateInput);
 
     return jsonOk({ template, model: result.model });
   } catch (error) {

@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { addWeeklyRoleInput } from "@/lib/demo-store";
 import { jsonError, jsonOk, readJson } from "@/lib/http";
+import { addWeeklyRoleInputInPrisma, isPrismaStoreConfigured } from "@/lib/prisma-store";
 
 const WeeklyInputSchema = z.object({
   xAccountId: z.string().min(1),
@@ -13,7 +14,8 @@ const WeeklyInputSchema = z.object({
 export async function POST(request: Request) {
   try {
     const body = WeeklyInputSchema.parse(await readJson(request));
-    return jsonOk({ weeklyInput: addWeeklyRoleInput(body) });
+    const weeklyInput = isPrismaStoreConfigured() ? await addWeeklyRoleInputInPrisma(body) : addWeeklyRoleInput(body);
+    return jsonOk({ weeklyInput });
   } catch (error) {
     return jsonError(error);
   }

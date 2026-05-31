@@ -436,6 +436,10 @@ function currentWeekOf() {
   return date.toISOString().slice(0, 10);
 }
 
+function sortWeeklyInputsByRecency(a: WeeklyRoleInput, b: WeeklyRoleInput) {
+  return new Date(b.weekOf).getTime() - new Date(a.weekOf).getTime() || new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+}
+
 function formatDateTimeLocalParts(parts: { year: number; month: number; day: number; hour: number; minute: number }) {
   const pad = (value: number) => value.toString().padStart(2, "0");
   return [
@@ -998,7 +1002,17 @@ export function DashboardShell({ mode = "console" }: DashboardShellProps) {
     runAction("Template delete", () => deleteJson(`/api/role-input-templates/${template.id}`));
 
   const addWeeklyInput = (input: WeeklyRoleInputInput) =>
-    runAction("Weekly input save", () => postJson("/api/weekly-inputs", input));
+    runAction(
+      "Weekly input save",
+      async () => {
+        const result = await postJson<{ weeklyInput: WeeklyRoleInput }>("/api/weekly-inputs", input);
+        setSelectedWeeklyInputIds((current) =>
+          current.includes(result.weeklyInput.id) ? current : [...current, result.weeklyInput.id]
+        );
+        return "Weekly input saved and selected for drafting.";
+      },
+      "weekly-input-panel"
+    );
 
   const deleteWeeklyInput = (input: WeeklyRoleInput) =>
     runAction("Weekly input delete", () => {
@@ -1213,6 +1227,7 @@ export function DashboardShell({ mode = "console" }: DashboardShellProps) {
           onAddWeeklyInput={addWeeklyInput}
           onDeleteWeeklyInput={deleteWeeklyInput}
           onAddTemplateFromBrief={addRoleTemplateFromBrief}
+          actionFeedback={feedbackFor("weekly-input-panel")}
           pending={isPending}
         />
         <DraftPostPanel
@@ -1620,6 +1635,7 @@ function WeeklyInputPanel({
   onAddWeeklyInput,
   onDeleteWeeklyInput,
   onAddTemplateFromBrief,
+  actionFeedback,
   pending
 }: {
   data: DashboardData;
@@ -1630,6 +1646,7 @@ function WeeklyInputPanel({
   onAddWeeklyInput: (input: WeeklyRoleInputInput) => void;
   onDeleteWeeklyInput: (input: WeeklyRoleInput) => void;
   onAddTemplateFromBrief: (input: RoleInputTemplateBriefInput) => void;
+  actionFeedback?: ActionFeedback;
   pending: boolean;
 }) {
   const activeTemplates = useMemo(() => data.roleInputTemplates.filter((template) => template.isActive), [data.roleInputTemplates]);
@@ -1640,7 +1657,9 @@ function WeeklyInputPanel({
   const [roleName, setRoleName] = useState(accountRoleNames[0] ?? "");
   const templatesForRole = activeTemplates.filter((template) => template.roleName === roleName);
   const [templateId, setTemplateId] = useState(templatesForRole[0]?.id ?? "");
-  const accountWeeklyInputs = data.weeklyInputs.filter((input) => input.xAccountId === selectedAccount?.id);
+  const accountWeeklyInputs = data.weeklyInputs
+    .filter((input) => input.xAccountId === selectedAccount?.id)
+    .sort(sortWeeklyInputsByRecency);
   const [weekOf, setWeekOf] = useState(currentWeekOf);
   const [content, setContent] = useState("");
   const [evidenceUrl, setEvidenceUrl] = useState("");
@@ -1828,6 +1847,7 @@ function WeeklyInputPanel({
           <Plus size={16} />
           Save Input
         </button>
+        <InlineFeedback feedback={actionFeedback} />
       </div>
 
       <div className="weekly-input-list">
@@ -1896,7 +1916,10 @@ function DraftPostPanel({
   actionFeedback?: ActionFeedback;
   pending: boolean;
 }) {
-  const recentWeeklyInputs = data.weeklyInputs.filter((input) => input.xAccountId === selectedAccountId).slice(0, 8);
+  const recentWeeklyInputs = data.weeklyInputs
+    .filter((input) => input.xAccountId === selectedAccountId)
+    .sort(sortWeeklyInputsByRecency)
+    .slice(0, 8);
   const toggleWeeklyInput = (inputId: string) => {
     setSelectedWeeklyInputIds(
       selectedWeeklyInputIds.includes(inputId)
