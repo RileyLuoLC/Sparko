@@ -11,7 +11,16 @@ import {
   validateScheduleRequest
 } from "./policy";
 import { enqueueMetricsSync } from "./queue";
-import { createPost, createRepost, getAuthenticatedUser, lookupPosts, refreshOAuthAccessToken, type XOAuthTokenResponse } from "./x-api";
+import { generateReplySuggestion, isReplyAiEnabled, type ReplySuggestionContext } from "./openai";
+import {
+  createPost,
+  createRepost,
+  getAuthenticatedUser,
+  lookupPosts,
+  refreshOAuthAccessToken,
+  searchRecentPosts,
+  type XOAuthTokenResponse
+} from "./x-api";
 import { getDashboardData as getDemoDashboardData } from "./demo-store";
 import type {
   AccountAnalytics,
@@ -21,6 +30,7 @@ import type {
   DraftPost,
   GeneratedDraftCandidate,
   InteractionSuggestion,
+  Persona,
   ScheduledPost,
   SourcePost,
   TrendSnapshot,
@@ -30,6 +40,8 @@ import type {
 const DEFAULT_WORKSPACE_ID = "workspace_demo";
 const DEFAULT_USER_EMAIL = "ops@example.com";
 const SETUP_PLACEHOLDER_ROLES = new Set(["Operator", "Needs setup"]);
+const PUBLISHED_POST_REPLY_MARKER = "replied to a post published by";
+const RECENT_INTERACTOR_POST_MARKER = "recently interacted with";
 
 export function isPrismaStoreConfigured() {
   return Boolean(process.env.DATABASE_URL);
@@ -133,6 +145,21 @@ function publicSourcePost(post: any): SourcePost {
     postedAt: toIso(post.postedAt),
     capturedAt: toIso(post.capturedAt),
     origin: "LIVE"
+  };
+}
+
+function publicPersona(persona: any): Persona {
+  return {
+    id: persona.id,
+    workspaceId: persona.workspaceId,
+    name: persona.name,
+    roleLabel: persona.roleLabel,
+    voice: persona.voice,
+    audience: persona.audience,
+    contentPillars: persona.contentPillars ?? [],
+    guardrails: persona.guardrails,
+    avoidTopics: persona.avoidTopics ?? [],
+    defaultHashtags: persona.defaultHashtags ?? []
   };
 }
 
@@ -329,18 +356,7 @@ export async function getDashboardDataFromPrisma(): Promise<DashboardData> {
   return {
     workspace,
     currentUser: user,
-    personas: personas.map((persona: any) => ({
-      id: persona.id,
-      workspaceId: persona.workspaceId,
-      name: persona.name,
-      roleLabel: persona.roleLabel,
-      voice: persona.voice,
-      audience: persona.audience,
-      contentPillars: persona.contentPillars ?? [],
-      guardrails: persona.guardrails,
-      avoidTopics: persona.avoidTopics ?? [],
-      defaultHashtags: persona.defaultHashtags
-    })),
+    personas: personas.map(publicPersona),
     xAccounts: xAccounts.map(publicXAccount),
     watchlistAccounts: [],
     companyMaterials: companyMaterials.map(publicCompanyMaterial),
@@ -1157,64 +1173,424 @@ export async function publishDueScheduledPostsInPrisma(limit = 20) {
   return results;
 }
 
-function interactionDraft(type: "REPLY" | "REPOST" | "QUOTE", sourcePost: SourcePost, account: XAccount) {
-  if (type === "REPOST") {
+function isObviouslyUnsuitableRecentInteractorPost(sourcePost: SourcePost, account: XAccount) {
+  const text = sourcePost.text.replace(/https?:\/\/\S+/g, "").trim();
+  const lower = text.toLowerCase();
+
+  if (sourcePost.authorUsername.toLowerCase() === account.username.toLowerCase()) {
+    return true;
+  }
+
+  if (text.length < 35) {
+    return true;
+  }
+
+  return [
+    /\bgiveaway\b/,
+    /\bairdrop\b/,
+    /\bfollow\b.*\b(retweet|repost|like)\b/,
+    /\b(retweet|repost|like)\b.*\bto win\b/,
+    /\bpromo code\b/,
+    /\bonlyfans\b/,
+    /\bcasino\b/,
+    /\bbetting\b/
+  ].some((pattern) => pattern.test(lower));
+}
+
+async function replySuggestionDraft(args: {
+  sourcePost: SourcePost;
+  account: XAccount;
+  persona?: Persona;
+  companyMaterials?: CompanyMaterial[];
+  context: ReplySuggestionContext;
+  publishedPostText?: string;
+  allowLocalFallback?: boolean;
+}) {
+  if (args.context === "recent_interactor_post" && isObviouslyUnsuitableRecentInteractorPost(args.sourcePost, args.account)) {
     return {
-      suggestedText: undefined,
-      rationale: "High-signal source post worth amplifying from this account.",
+      shouldSuggest: false,
+      suggestedText: "",
+      rationale: `@${args.sourcePost.authorUsername} recently interacted with @${args.account.username}, but this post is not a strong fit for a proactive reply.`,
       riskLevel: "LOW" as const,
       riskReasons: []
     };
   }
-  const text =
-    type === "REPLY"
-      ? `Thanks for mentioning us. The useful part is keeping the review loop explicit before anything ships.`
-      : `Useful signal: ${sourcePost.text.replace(/https?:\/\/\S+/g, "").slice(0, 160).trim()}`;
-  const risk = assessRisk(text);
+
+  if (isReplyAiEnabled()) {
+    try {
+      return await generateReplySuggestion(args);
+    } catch (error) {
+      if (args.allowLocalFallback === false) {
+        throw error;
+      }
+      // Fall through to the local draft so sync still creates a reviewable suggestion.
+    }
+  }
+
+  const { sourcePost, account } = args;
+  const cleaned = sourcePost.text.replace(/https?:\/\/\S+/g, "").trim();
+  const base =
+    args.context === "recent_interactor_post"
+      ? cleaned
+        ? "Yep, that feels right. The part that usually matters is making the next step obvious enough to actually do."
+        : "Yep. Curious what made that click for you."
+      : cleaned
+        ? "Yep, that tracks. Which part feels most true from your side?"
+        : "Yep. Curious what part landed most for you.";
+  const risk = assessRisk(base);
+
   return {
-    suggestedText: truncateForX(text),
-    rationale:
-      type === "REPLY"
-        ? `The source post mentioned @${account.username}, so this is eligible for human-approved API reply.`
-        : "The source post has strong public engagement and can be handled as a quote-post suggestion.",
+    shouldSuggest: true,
+    suggestedText: truncateForX(base),
+    rationale: replyOpportunityRationale(args.context, sourcePost, account),
     ...risk
   };
 }
 
-async function suggestInteractionForSourcePost(sourcePost: SourcePost) {
-  const account = await prisma.xAccount.findFirst({
-    where: { workspaceId: sourcePost.workspaceId, status: "CONNECTED" },
-    orderBy: { updatedAt: "desc" }
-  });
-  if (!account) {
-    return undefined;
+function replyOpportunityRationale(
+  context: ReplySuggestionContext,
+  sourcePost: SourcePost,
+  account: XAccount,
+  modelRationale?: string
+) {
+  const base =
+    context === "recent_interactor_post"
+      ? `@${sourcePost.authorUsername} recently interacted with @${account.username} and posted a new update that fits this account's voice or context, so this is a human-approved reply opportunity.`
+      : `@${sourcePost.authorUsername} replied to a post published by @${account.username}, so this is a human-approved reply opportunity.`;
+  const marker = context === "recent_interactor_post" ? RECENT_INTERACTOR_POST_MARKER : PUBLISHED_POST_REPLY_MARKER;
+  const detail = modelRationale?.trim();
+
+  if (!detail || detail.includes(marker)) {
+    return detail || base;
   }
 
-  const publicAccount = publicXAccount(account);
-  const mentioned = sourcePost.text.toLowerCase().includes(`@${account.username.toLowerCase()}`);
-  const signalScore = sourcePost.likeCount + sourcePost.repostCount * 2 + sourcePost.replyCount + sourcePost.quoteCount * 3;
-  const type = mentioned ? "REPLY" : account.quotePostsEnabled && signalScore >= 50 ? "QUOTE" : "REPOST";
+  return `${base} ${detail}`;
+}
+
+function inferReplySuggestionContext(rationale: string): ReplySuggestionContext {
+  if (rationale.includes(RECENT_INTERACTOR_POST_MARKER)) {
+    return "recent_interactor_post";
+  }
+
+  return "published_post_reply";
+}
+
+async function suggestReplyForSourcePost(args: {
+  sourcePost: SourcePost;
+  account: XAccount;
+  persona?: Persona;
+  companyMaterials?: CompanyMaterial[];
+  context: ReplySuggestionContext;
+  publishedPostText?: string;
+  allowLocalFallback?: boolean;
+}): Promise<InteractionSuggestion | null> {
+  const { sourcePost, account } = args;
   const existing = await prisma.interactionSuggestion.findFirst({
-    where: { workspaceId: sourcePost.workspaceId, xAccountId: account.id, sourcePostId: sourcePost.id, type }
+    where: { workspaceId: sourcePost.workspaceId, xAccountId: account.id, sourcePostId: sourcePost.id, type: "REPLY" }
   });
   if (existing) {
     return publicInteraction(existing);
   }
 
-  const draft = interactionDraft(type, sourcePost, publicAccount);
+  const draft = await replySuggestionDraft(args);
+  if (!draft.shouldSuggest || !draft.suggestedText.trim()) {
+    return null;
+  }
+
   const interaction = await prisma.interactionSuggestion.create({
     data: {
       workspaceId: sourcePost.workspaceId,
       xAccountId: account.id,
       sourcePostId: sourcePost.id,
-      type,
+      type: "REPLY",
       suggestedText: draft.suggestedText,
-      rationale: draft.rationale,
+      rationale: replyOpportunityRationale(args.context, sourcePost, account, draft.rationale),
       riskLevel: draft.riskLevel ?? "LOW",
       riskReasons: draft.riskReasons ?? []
     }
   });
   return publicInteraction(interaction);
+}
+
+export async function regenerateReplyInteractionSuggestionInPrisma(interactionId: string) {
+  const interaction = await prisma.interactionSuggestion.findUnique({
+    where: { id: interactionId },
+    include: {
+      sourcePost: true,
+      xAccount: { include: { persona: true } }
+    }
+  });
+  if (!interaction) {
+    throw new Error("Reply suggestion not found.");
+  }
+  if (interaction.type !== "REPLY") {
+    throw new Error("Only reply suggestions can be regenerated.");
+  }
+  if (!["SUGGESTED", "BLOCKED"].includes(interaction.status)) {
+    throw new Error("Only pending reply suggestions can be regenerated.");
+  }
+
+  const companyMaterials = (await prisma.companyMaterial.findMany({
+    where: { workspaceId: interaction.workspaceId },
+    orderBy: { updatedAt: "desc" },
+    take: 12
+  })).map(publicCompanyMaterial);
+  const sourcePost = publicSourcePost(interaction.sourcePost);
+  const account = publicXAccount(interaction.xAccount);
+  const context = inferReplySuggestionContext(interaction.rationale);
+  const draft = await replySuggestionDraft({
+    sourcePost,
+    account,
+    persona: interaction.xAccount.persona ? publicPersona(interaction.xAccount.persona) : undefined,
+    companyMaterials,
+    context,
+    allowLocalFallback: false
+  });
+  if (!draft.shouldSuggest || !draft.suggestedText.trim()) {
+    throw new Error("This source post is not a strong fit for a reply suggestion.");
+  }
+  const regenerated = await prisma.interactionSuggestion.update({
+    where: { id: interaction.id },
+    data: {
+      suggestedText: draft.suggestedText,
+      rationale: replyOpportunityRationale(context, sourcePost, account, draft.rationale),
+      riskLevel: draft.riskLevel ?? "LOW",
+      riskReasons: draft.riskReasons ?? [],
+      status: "SUGGESTED"
+    }
+  });
+  await audit("interaction.regenerated", "InteractionSuggestion", interaction.id, {
+    sourcePostId: interaction.sourcePostId,
+    xAccountId: interaction.xAccountId
+  });
+
+  return { interaction: publicInteraction(regenerated) };
+}
+
+type LiveReplyTweet = {
+  id: string;
+  text?: string;
+  author_id?: string;
+  created_at?: string;
+  public_metrics?: {
+    like_count?: number;
+    retweet_count?: number;
+    reply_count?: number;
+    quote_count?: number;
+  };
+};
+
+type LiveReplyUser = {
+  id: string;
+  username?: string;
+  name?: string;
+};
+
+async function upsertLiveSourcePost(workspaceId: string, tweet: LiveReplyTweet, author?: LiveReplyUser) {
+  const authorUsername = author?.username ?? "x";
+  const sourcePost = await prisma.sourcePost.upsert({
+    where: {
+      workspaceId_xPostId: {
+        workspaceId,
+        xPostId: tweet.id
+      }
+    },
+    update: {
+      authorUsername,
+      authorDisplayName: author?.name,
+      text: tweet.text ?? "",
+      url: `https://x.com/${authorUsername}/status/${tweet.id}`,
+      likeCount: tweet.public_metrics?.like_count ?? 0,
+      repostCount: tweet.public_metrics?.retweet_count ?? 0,
+      replyCount: tweet.public_metrics?.reply_count ?? 0,
+      quoteCount: tweet.public_metrics?.quote_count ?? 0,
+      postedAt: tweet.created_at ? new Date(tweet.created_at) : new Date()
+    },
+    create: {
+      workspaceId,
+      xPostId: tweet.id,
+      authorUsername,
+      authorDisplayName: author?.name,
+      text: tweet.text ?? "",
+      url: `https://x.com/${authorUsername}/status/${tweet.id}`,
+      likeCount: tweet.public_metrics?.like_count ?? 0,
+      repostCount: tweet.public_metrics?.retweet_count ?? 0,
+      replyCount: tweet.public_metrics?.reply_count ?? 0,
+      quoteCount: tweet.public_metrics?.quote_count ?? 0,
+      postedAt: tweet.created_at ? new Date(tweet.created_at) : new Date()
+    }
+  });
+
+  return publicSourcePost(sourcePost);
+}
+
+export async function syncReplyInteractionSuggestionsInPrisma(limit = 10) {
+  const { workspace } = await ensureWorkspace();
+  const syncLimit = Math.max(1, Math.min(limit, 20));
+  const publishedPosts = await prisma.scheduledPost.findMany({
+    where: {
+      workspaceId: workspace.id,
+      status: "PUBLISHED",
+      xPublishedPostId: { not: null },
+      xAccount: { status: "CONNECTED", repliesEnabled: true }
+    },
+    include: { xAccount: { include: { persona: true } } },
+    orderBy: { scheduledFor: "desc" },
+    take: syncLimit
+  });
+  const companyMaterials = (await prisma.companyMaterial.findMany({
+    where: { workspaceId: workspace.id },
+    orderBy: { updatedAt: "desc" },
+    take: 12
+  })).map(publicCompanyMaterial);
+
+  const sourcePosts: SourcePost[] = [];
+  const interactions: InteractionSuggestion[] = [];
+  let skippedUnsuitablePosts = 0;
+  let searchErrors = 0;
+
+  for (const post of publishedPosts) {
+    if (!post.xPublishedPostId) {
+      continue;
+    }
+
+    const accessToken = await freshAccountToken(post.xAccount).catch(() => undefined);
+    const query = `conversation_id:${post.xPublishedPostId} -from:${post.xAccount.username} -is:retweet`;
+    let searchResult;
+    try {
+      searchResult = await searchRecentPosts(query, 10, { sortOrder: "recency", token: accessToken });
+    } catch {
+      searchErrors += 1;
+      continue;
+    }
+    const usersById = new Map(
+      ((searchResult?.includes?.users ?? []) as LiveReplyUser[]).map((user) => [user.id, user])
+    );
+    const tweets = ((searchResult?.data ?? []) as LiveReplyTweet[]).filter(
+      (tweet) => tweet.id !== post.xPublishedPostId && tweet.author_id !== post.xAccount.xUserId && tweet.text?.trim()
+    );
+
+    for (const tweet of tweets) {
+      const author = tweet.author_id ? usersById.get(tweet.author_id) : undefined;
+      const publicSource = await upsertLiveSourcePost(workspace.id, tweet, author);
+      sourcePosts.push(publicSource);
+      const interaction = await suggestReplyForSourcePost({
+        sourcePost: publicSource,
+        account: publicXAccount(post.xAccount),
+        persona: post.xAccount.persona ? publicPersona(post.xAccount.persona) : undefined,
+        companyMaterials,
+        context: "published_post_reply",
+        publishedPostText: post.finalText,
+        allowLocalFallback: true
+      });
+      if (interaction) {
+        interactions.push(interaction);
+      }
+    }
+  }
+
+  const recentCutoff = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
+  const recentInteractionRows = await prisma.interactionSuggestion.findMany({
+    where: {
+      workspaceId: workspace.id,
+      type: "REPLY",
+      updatedAt: { gte: recentCutoff },
+      xAccount: { status: "CONNECTED", repliesEnabled: true }
+    },
+    include: {
+      sourcePost: true,
+      xAccount: { include: { persona: true } }
+    },
+    orderBy: { updatedAt: "desc" },
+    take: syncLimit * 4
+  });
+
+  const recentInteractorPairs: Array<{
+    authorUsername: string;
+    account: (typeof recentInteractionRows)[number]["xAccount"];
+  }> = [];
+  const seenRecentInteractorPairs = new Set<string>();
+
+  for (const row of recentInteractionRows) {
+    if (!row.rationale.includes(PUBLISHED_POST_REPLY_MARKER)) {
+      continue;
+    }
+
+    const authorUsername = row.sourcePost.authorUsername;
+    if (!authorUsername || authorUsername.toLowerCase() === row.xAccount.username.toLowerCase()) {
+      continue;
+    }
+
+    const key = `${row.xAccountId}:${authorUsername.toLowerCase()}`;
+    if (seenRecentInteractorPairs.has(key)) {
+      continue;
+    }
+
+    seenRecentInteractorPairs.add(key);
+    recentInteractorPairs.push({ authorUsername, account: row.xAccount });
+    if (recentInteractorPairs.length >= Math.min(syncLimit, 8)) {
+      break;
+    }
+  }
+
+  for (const pair of recentInteractorPairs) {
+    const accessToken = await freshAccountToken(pair.account).catch(() => undefined);
+    const query = `from:${pair.authorUsername} -is:retweet -is:reply`;
+    let searchResult;
+    try {
+      searchResult = await searchRecentPosts(query, 10, { sortOrder: "recency", token: accessToken });
+    } catch {
+      searchErrors += 1;
+      continue;
+    }
+
+    const usersById = new Map(
+      ((searchResult?.includes?.users ?? []) as LiveReplyUser[]).map((user) => [user.id, user])
+    );
+    const tweets = ((searchResult?.data ?? []) as LiveReplyTweet[]).filter(
+      (tweet) => tweet.author_id !== pair.account.xUserId && tweet.text?.trim()
+    );
+
+    for (const tweet of tweets.slice(0, 3)) {
+      const author = tweet.author_id ? usersById.get(tweet.author_id) : undefined;
+      const publicSource = await upsertLiveSourcePost(workspace.id, tweet, author);
+      sourcePosts.push(publicSource);
+
+      const interaction = await suggestReplyForSourcePost({
+        sourcePost: publicSource,
+        account: publicXAccount(pair.account),
+        persona: pair.account.persona ? publicPersona(pair.account.persona) : undefined,
+        companyMaterials,
+        context: "recent_interactor_post",
+        allowLocalFallback: true
+      });
+
+      if (interaction) {
+        interactions.push(interaction);
+        break;
+      }
+
+      skippedUnsuitablePosts += 1;
+    }
+  }
+
+  await audit("interactions.sync_replies", "Workspace", workspace.id, {
+    scannedPublishedPosts: publishedPosts.length,
+    scannedRecentInteractors: recentInteractorPairs.length,
+    sourcePosts: sourcePosts.length,
+    interactionSuggestions: interactions.length,
+    skippedUnsuitablePosts,
+    searchErrors
+  });
+
+  return {
+    scannedPublishedPosts: publishedPosts.length,
+    scannedRecentInteractors: recentInteractorPairs.length,
+    skippedUnsuitablePosts,
+    searchErrors,
+    sourcePosts,
+    interactions
+  };
 }
 
 export async function recordDiscoveryInPrisma(input: {
@@ -1292,12 +1668,7 @@ export async function recordDiscoveryInPrisma(input: {
           postedAt: postInput.postedAt ? new Date(postInput.postedAt) : new Date()
         }
       });
-      const publicPost = publicSourcePost(post);
-      sourcePosts.push(publicPost);
-      const interaction = await suggestInteractionForSourcePost(publicPost);
-      if (interaction) {
-        interactions.push(interaction);
-      }
+      sourcePosts.push(publicSourcePost(post));
     }
   }
 

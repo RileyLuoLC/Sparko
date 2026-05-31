@@ -247,9 +247,10 @@ export async function countRecentPosts(query: string) {
 export async function searchRecentPosts(
   query: string,
   maxResults = 25,
-  options: { sortOrder?: "recency" | "relevancy" } = {}
+  options: { sortOrder?: "recency" | "relevancy"; token?: string } = {}
 ) {
-  if (!isXBearerConfigured()) {
+  const token = options.token ?? env.xBearerToken;
+  if (!token) {
     return {
       data: [],
       includes: { users: [] },
@@ -267,7 +268,7 @@ export async function searchRecentPosts(
   if (options.sortOrder) {
     params.set("sort_order", options.sortOrder);
   }
-  return xFetch(`/2/tweets/search/recent?${params.toString()}`);
+  return xFetch(`/2/tweets/search/recent?${params.toString()}`, {}, token);
 }
 
 export async function createPost(args: {

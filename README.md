@@ -2,19 +2,23 @@
 
 Open-source X growth assistant for founders, builders, and teams.
 
-Turn account identity, company context, weekly inputs, and post briefs into X posts you can review, edit, schedule, and publish — with human approval in the loop.
+Turn account identity, company context, weekly inputs, post briefs, and interaction opportunities into X posts and relationship-building actions you can review, edit, schedule, and publish — with human approval in the loop.
 
 ⭐ Star Sparko if you’re building your brand, audience, or distribution on X.
 
 Most builders know they should post more. The hard part is knowing what to say every day: what will attract the right audience, carry a real point of view, and still give readers something useful.
 
-Sparko helps turn messy day-to-day context into a repeatable publishing workflow for personal branding, founder-led growth, team-led growth, and building in public.
+Sparko helps turn messy day-to-day context into a repeatable growth workflow for personal branding, founder-led growth, team-led growth, and building in public — combining consistent publishing with timely interactions that deepen relationships on X.
 
 ## Why Sparko
 
 The drafting workflow is designed around formats and structures that tend to perform well on X, so rough notes, weekly updates, and company context can become posts that feel native to the feed.
 
 The goal is to find the perfect balance between publishing authentic, organic, useful posts that fit your role, attract the audience you want, and compound into a profile worth following — while creating content that sparks discussion, earns engagement, gets reposted, and spreads on X.
+
+But growth on X is not only about posting. It also comes from showing up in the right conversations, replying with substance, and staying meaningfully engaged with people who matter to your work, audience, and network.
+
+Sparko generates timely interaction suggestions on who to reply to, what to engage with, and how to keep conversations going — so your X presence compounds not just into reach, but into real relationships.
 
 ## The Workflow
 
@@ -24,6 +28,8 @@ The goal is to find the perfect balance between publishing authentic, organic, u
 4. Generate draft options
 5. Review, edit, approve
 6. Schedule and publish
+7. Get interaction suggestions
+8. Keep conversations going
 
 ## Quick Start
 
@@ -93,22 +99,26 @@ AI drafting:
 
 ```env
 DRAFT_AI_PROVIDER=openai
+REPLY_AI_PROVIDER=
 OPENAI_API_KEY=
 OPENAI_DRAFT_MODEL=gpt-5-mini
+OPENAI_REPLY_MODEL=gpt-5-mini
 OPENAI_STRATEGY_MODEL=gpt-5.1
 
 XAI_API_KEY=
 XAI_BASE_URL=https://api.x.ai/v1
 XAI_DRAFT_MODEL=grok-4.3
+XAI_REPLY_MODEL=grok-4.3
 XAI_STRATEGY_MODEL=grok-4.3
 
 ANTHROPIC_API_KEY=
 ANTHROPIC_BASE_URL=https://api.anthropic.com
 ANTHROPIC_DRAFT_MODEL=claude-sonnet-4-20250514
+ANTHROPIC_REPLY_MODEL=claude-sonnet-4-20250514
 ANTHROPIC_STRATEGY_MODEL=claude-sonnet-4-20250514
 ```
 
-Only the selected AI provider needs a key. Replace model names with models available to your provider account.
+Only the selected AI provider needs a key. Replace model names with models available to your provider account. Leave `REPLY_AI_PROVIDER` blank to use local reply templates; set it to `openai`, `xai`, or `claude` to use a separate reply model.
 
 Do not commit `.env`, `.env.local`, database dumps, logs, screenshots with tokens, or generated build output.
 

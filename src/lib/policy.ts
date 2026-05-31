@@ -253,7 +253,9 @@ export function canApproveInteractionForApi(args: {
       return { ok: false, reason: "Replies are disabled for this X account." };
     }
 
-    if (!sourcePostSummonedAccount(args.sourcePost, args.account)) {
+    const repliedToPublishedPost = args.interaction.rationale.includes("replied to a post published by");
+    const recentInteractorPost = args.interaction.rationale.includes("recently interacted with");
+    if (!sourcePostSummonedAccount(args.sourcePost, args.account) && !repliedToPublishedPost && !recentInteractorPost) {
       return {
         ok: false,
         reason: "X self-serve reply automation requires the source post to explicitly mention or summon the replying account."

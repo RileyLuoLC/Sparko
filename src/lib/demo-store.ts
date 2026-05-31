@@ -1220,7 +1220,7 @@ const interactions: InteractionSuggestion[] = [
     sourcePostId: "source_03",
     type: "REPLY",
     suggestedText: "Exactly. The boring controls are usually what make AI workflows durable enough for real teams.",
-    rationale: "The source post explicitly mentions the company account, so a human-approved API reply can be allowed.",
+    rationale: "@example_ops replied to a post published by @demo_company, so this is a human-approved reply opportunity.",
     status: "SUGGESTED",
     riskLevel: "LOW",
     riskReasons: [],
@@ -1232,9 +1232,9 @@ const interactions: InteractionSuggestion[] = [
     workspaceId: workspace.id,
     xAccountId: "x_founder",
     sourcePostId: "source_01",
-    type: "QUOTE",
-    suggestedText: "This is the part many agent demos skip: judgment does not disappear, it gets designed into the workflow.",
-    rationale: "Founder quote-post angle for a high-performing industry post.",
+    type: "REPLY",
+    suggestedText: "That is the piece I keep coming back to: the handoff matters as much as the automation.",
+    rationale: "@example_builder replied to a post published by @demo_personal, so this is a human-approved reply opportunity.",
     status: "SUGGESTED",
     riskLevel: "LOW",
     riskReasons: [],
@@ -2430,6 +2430,40 @@ export function approveInteraction(interactionId: string) {
     apiEligible: apiEligibility.ok,
     reason: apiEligibility.ok ? undefined : apiEligibility.reason
   };
+}
+
+export function regenerateReplyInteraction(interactionId: string) {
+  const interaction = store.interactions.find((item) => item.id === interactionId);
+  if (!interaction) {
+    throw new Error("Reply suggestion not found.");
+  }
+  if (interaction.type !== "REPLY") {
+    throw new Error("Only reply suggestions can be regenerated.");
+  }
+  if (!["SUGGESTED", "BLOCKED"].includes(interaction.status)) {
+    throw new Error("Only pending reply suggestions can be regenerated.");
+  }
+
+  const sourcePost = store.sourcePosts.find((item) => item.id === interaction.sourcePostId);
+  if (!sourcePost) {
+    throw new Error("Reply source not found.");
+  }
+
+  interaction.suggestedText =
+    sourcePost.text.length > 80
+      ? "That is a useful way to frame it. The part I would double-click is where this shows up in the actual workflow."
+      : "That is fair. What part of this felt most true from your side?";
+  interaction.riskLevel = "LOW";
+  interaction.riskReasons = [];
+  interaction.status = "SUGGESTED";
+  interaction.updatedAt = nowIso();
+
+  audit("interaction.regenerated", "InteractionSuggestion", interaction.id, {
+    sourcePostId: interaction.sourcePostId,
+    xAccountId: interaction.xAccountId
+  });
+
+  return { interaction };
 }
 
 export function getAnalyticsForAccount(accountId: string): AccountAnalytics {

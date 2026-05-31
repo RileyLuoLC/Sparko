@@ -121,6 +121,18 @@ const ROLE_DISPLAY_ORDER = [
   "PM"
 ];
 const ADD_NEW_TYPE_VALUE = "__add_new_type__";
+const HOUR_12_OPTIONS = Array.from({ length: 12 }, (_, index) => {
+  const hour = index + 1;
+  return { value: hour.toString(), label: hour.toString().padStart(2, "0") };
+});
+const MINUTE_OPTIONS = Array.from({ length: 60 }, (_, minute) => {
+  const value = minute.toString().padStart(2, "0");
+  return { value, label: value };
+});
+const PERIOD_OPTIONS = [
+  { value: "AM", label: "AM" },
+  { value: "PM", label: "PM" }
+];
 const SETUP_PLACEHOLDER_ROLES = new Set(["Operator", "Needs setup"]);
 const LEGACY_AUTOFILL_STRATEGY = {
   voice: "specific, useful, concise",
@@ -406,6 +418,60 @@ function formatDateTimeLocalParts(parts: { year: number; month: number; day: num
   ].join("");
 }
 
+function formatDateInputParts(parts: { year: number; month: number; day: number }) {
+  const pad = (value: number) => value.toString().padStart(2, "0");
+  return [parts.year, "-", pad(parts.month), "-", pad(parts.day)].join("");
+}
+
+function parseDateInput(value: string) {
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) {
+    return undefined;
+  }
+
+  const [, year, month, day] = match;
+  return {
+    year: Number(year),
+    month: Number(month),
+    day: Number(day)
+  };
+}
+
+function hour12ToHour24(hour12: number, period: string) {
+  if (period === "PM") {
+    return hour12 === 12 ? 12 : hour12 + 12;
+  }
+  return hour12 === 12 ? 0 : hour12;
+}
+
+function getSchedulePickerParts(value: string) {
+  const parts = parseDateTimeLocal(value) ?? zonedParts(new Date(), getDeviceTimeZone());
+  const hour12 = parts.hour % 12 || 12;
+
+  return {
+    date: formatDateInputParts(parts),
+    hour: hour12.toString(),
+    minute: parts.minute.toString().padStart(2, "0"),
+    period: parts.hour >= 12 ? "PM" : "AM"
+  };
+}
+
+function buildDateTimeLocalValue(parts: { date: string; hour: string; minute: string; period: string }) {
+  const date = parseDateInput(parts.date);
+  const hour12 = Number(parts.hour);
+  const minute = Number(parts.minute);
+
+  if (!date || Number.isNaN(hour12) || Number.isNaN(minute)) {
+    return undefined;
+  }
+
+  return formatDateTimeLocalParts({
+    ...date,
+    hour: hour12ToHour24(hour12, parts.period),
+    minute
+  });
+}
+
 function zonedParts(date: Date, timeZone: string) {
   const values = Object.fromEntries(
     new Intl.DateTimeFormat("en-US", {
@@ -505,6 +571,16 @@ function postJson<T>(url: string, body?: unknown): Promise<T> {
   });
 }
 
+function getJson<T>(url: string): Promise<T> {
+  return fetch(url, { cache: "no-store" }).then(async (response) => {
+    const payload = await response.json();
+    if (!response.ok) {
+      throw new Error(payload.error ?? "Request failed.");
+    }
+    return payload as T;
+  });
+}
+
 function patchJson<T>(url: string, body?: unknown): Promise<T> {
   return fetch(url, {
     method: "PATCH",
@@ -532,11 +608,12 @@ function deleteJson<T>(url: string): Promise<T> {
 }
 
 function formatTime(value: string) {
-  return new Intl.DateTimeFormat("en", {
+  return new Intl.DateTimeFormat("en-US", {
     month: "short",
     day: "numeric",
     hour: "2-digit",
-    minute: "2-digit"
+    minute: "2-digit",
+    hour12: true
   }).format(new Date(value));
 }
 
@@ -637,14 +714,19 @@ export function DashboardShell({ mode = "console" }: DashboardShellProps) {
 
   const refresh = () => {
     startTransition(async () => {
-      const [next, nextReadiness] = await Promise.all([
-        fetch("/api/dashboard", { cache: "no-store" }).then((response) => response.json()),
-        fetch("/api/readiness", { cache: "no-store" }).then((response) => response.json())
-      ]);
-      setData(next);
-      setReadiness(nextReadiness);
-      setSelectedAccountId((current) => current || next.xAccounts[0]?.id || "");
-      setSelectedPersonaId((current) => current || next.xAccounts[0]?.personaId || next.personas[0]?.id || "");
+      try {
+        const [next, nextReadiness] = await Promise.all([
+          getJson<DashboardData>("/api/dashboard"),
+          getJson<ReadinessData>("/api/readiness")
+        ]);
+        setData(next);
+        setReadiness(nextReadiness);
+        setSelectedAccountId((current) => current || next.xAccounts[0]?.id || "");
+        setSelectedPersonaId((current) => current || next.xAccounts[0]?.personaId || next.personas[0]?.id || "");
+        setNotice((current) => (current.startsWith("Unable to refresh") ? "Ready" : current));
+      } catch (error) {
+        setNotice(error instanceof Error ? `Unable to refresh: ${error.message}` : "Unable to refresh dashboard.");
+      }
     });
   };
 
@@ -713,8 +795,8 @@ export function DashboardShell({ mode = "console" }: DashboardShellProps) {
         setNotice(`${label}...`);
         const result = await action();
         const [next, nextReadiness] = await Promise.all([
-          fetch("/api/dashboard", { cache: "no-store" }).then((response) => response.json()),
-          fetch("/api/readiness", { cache: "no-store" }).then((response) => response.json())
+          getJson<DashboardData>("/api/dashboard"),
+          getJson<ReadinessData>("/api/readiness")
         ]);
         setData(next);
         setReadiness(nextReadiness);
@@ -880,6 +962,12 @@ export function DashboardShell({ mode = "console" }: DashboardShellProps) {
 
   const approveInteraction = (interaction: InteractionSuggestion) =>
     runAction("Interaction review", () => postJson(`/api/interactions/${interaction.id}/approve`));
+
+  const regenerateInteraction = (interaction: InteractionSuggestion) =>
+    runAction("Reply regenerate", () => postJson(`/api/interactions/${interaction.id}/regenerate`));
+
+  const syncInteractionReplies = () =>
+    runAction("Interaction sync", () => postJson("/api/interactions/sync"));
 
   useEffect(() => {
     const scrollToHash = () => {
@@ -1068,7 +1156,13 @@ export function DashboardShell({ mode = "console" }: DashboardShellProps) {
           deviceTimeZone={deviceTimeZone}
           pending={isPending}
         />
-        <InteractionPanel data={data} onApprove={approveInteraction} pending={isPending} />
+        <InteractionPanel
+          data={data}
+          onApprove={approveInteraction}
+          onRegenerate={regenerateInteraction}
+          onSyncReplies={syncInteractionReplies}
+          pending={isPending}
+        />
         <ContentCalendar
           data={data}
           onUpdateScheduledPost={updateScheduledPostTime}
@@ -1207,6 +1301,55 @@ function CustomSelect({
           ))}
         </div>
       ) : null}
+    </div>
+  );
+}
+
+function ScheduleDateTimeControl({
+  value,
+  onChange,
+  ariaLabel
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  ariaLabel: string;
+}) {
+  const parts = getSchedulePickerParts(value);
+  const update = (nextParts: Partial<typeof parts>) => {
+    const nextValue = buildDateTimeLocalValue({ ...parts, ...nextParts });
+    if (nextValue) {
+      onChange(nextValue);
+    }
+  };
+
+  return (
+    <div className="schedule-datetime-control">
+      <input
+        className="schedule-date-input"
+        type="date"
+        value={parts.date}
+        aria-label={`${ariaLabel} date`}
+        onChange={(event) => update({ date: event.target.value })}
+      />
+      <CustomSelect
+        value={parts.hour}
+        onChange={(hour) => update({ hour })}
+        ariaLabel={`${ariaLabel} hour`}
+        options={HOUR_12_OPTIONS}
+      />
+      <span className="schedule-time-separator">:</span>
+      <CustomSelect
+        value={parts.minute}
+        onChange={(minute) => update({ minute })}
+        ariaLabel={`${ariaLabel} minute`}
+        options={MINUTE_OPTIONS}
+      />
+      <CustomSelect
+        value={parts.period}
+        onChange={(period) => update({ period })}
+        ariaLabel={`${ariaLabel} AM or PM`}
+        options={PERIOD_OPTIONS}
+      />
     </div>
   );
 }
@@ -1663,7 +1806,7 @@ function DraftPostPanel({
       <div className="draft-controls">
         <label className="schedule-control">
           <span>Schedule time</span>
-          <input type="datetime-local" value={scheduleTime} onChange={(event) => setScheduleTime(event.target.value)} />
+          <ScheduleDateTimeControl value={scheduleTime} onChange={setScheduleTime} ariaLabel="Schedule time" />
         </label>
         <label className="time-zone-control">
           <span>Time zone</span>
@@ -2000,11 +2143,7 @@ function ReviewQueue({
                           <div className="draft-schedule-fields">
                             <label>
                               <span>Schedule time</span>
-                              <input
-                                type="datetime-local"
-                                value={scheduleTime}
-                                onChange={(event) => setScheduleTime(event.target.value)}
-                              />
+                              <ScheduleDateTimeControl value={scheduleTime} onChange={setScheduleTime} ariaLabel="Draft schedule time" />
                             </label>
                             <label>
                               <span>Time zone</span>
@@ -2337,7 +2476,7 @@ function CalendarItem({
         <div className="calendar-edit-form">
           <label>
             <span>Schedule time</span>
-            <input type="datetime-local" value={editTime} onChange={(event) => setEditTime(event.target.value)} />
+            <ScheduleDateTimeControl value={editTime} onChange={setEditTime} ariaLabel="Scheduled post time" />
           </label>
           <label>
             <span>Time zone</span>
@@ -2402,27 +2541,44 @@ function PublishedPostCard({ post, account }: { post: ScheduledPost; account?: X
 function InteractionPanel({
   data,
   onApprove,
+  onRegenerate,
+  onSyncReplies,
   pending
 }: {
   data: DashboardData;
   onApprove: (interaction: InteractionSuggestion) => void;
+  onRegenerate: (interaction: InteractionSuggestion) => void;
+  onSyncReplies: () => void;
   pending: boolean;
 }) {
   const [reviewingInteractionId, setReviewingInteractionId] = useState<string | null>(null);
-  const pendingCount = data.interactions.filter((interaction) => interaction.status === "SUGGESTED").length;
+  const replyInteractions = data.interactions.filter((interaction) => interaction.type === "REPLY");
+  const pendingCount = replyInteractions.filter((interaction) => interaction.status === "SUGGESTED").length;
 
   return (
     <section className="panel span-6" id="interaction-suggestions">
-      <PanelTitle
-        icon={<MessageSquareQuote size={18} />}
-        title="Interaction Suggestions"
-        meta={`${pendingCount} pending`}
-      />
+      <div className="panel-title">
+        <div>
+          <MessageSquareQuote size={18} />
+          <h2>Reply Suggestions</h2>
+        </div>
+        <div className="panel-title-actions">
+          <span>{pendingCount} pending</span>
+          <button className="icon-button compact secondary" disabled={pending} onClick={onSyncReplies}>
+            <RefreshCw size={15} />
+            Sync Replies & Posts
+          </button>
+        </div>
+      </div>
       <div className="interaction-list">
-        {data.interactions.slice(0, 4).map((interaction) => {
+        {replyInteractions.length === 0 ? (
+          <div className="empty-inline">No interaction suggestions yet.</div>
+        ) : null}
+        {replyInteractions.slice(0, 4).map((interaction) => {
           const account = findAccount(data, interaction.xAccountId);
           const source = findSource(data, interaction.sourcePostId);
           const isReviewing = reviewingInteractionId === interaction.id;
+          const isRecentInteractorPost = interaction.rationale.includes("recently interacted with");
           return (
             <article className="interaction-card" key={interaction.id}>
               <div className="draft-head">
@@ -2432,12 +2588,19 @@ function InteractionPanel({
                 </div>
                 <Badge tone={statusTone[interaction.status]}>{interaction.status}</Badge>
               </div>
-              <p>{interaction.suggestedText}</p>
+              <div className="interaction-source">
+                <span>{isRecentInteractorPost ? "Their post" : "Their reply"}</span>
+                <p>{source?.text ?? (isRecentInteractorPost ? "Post unavailable." : "Reply unavailable.")}</p>
+              </div>
+              <div className="interaction-suggestion">
+                <span>Suggested reply</span>
+                <p>{interaction.suggestedText}</p>
+              </div>
               {isReviewing ? (
                 <div className="interaction-review-box">
                   <div>
-                    <strong>Source</strong>
-                    <p>{source?.text ?? "Source post unavailable."}</p>
+                    <strong>Rationale</strong>
+                    <p>{interaction.rationale}</p>
                   </div>
                   <div className="draft-meta">
                     <Badge tone={interaction.riskLevel === "LOW" ? "good" : interaction.riskLevel === "MEDIUM" ? "warn" : "bad"}>
@@ -2446,6 +2609,10 @@ function InteractionPanel({
                     {interaction.riskReasons.length > 0 ? <span>{interaction.riskReasons.join("; ")}</span> : <span>No risk flags</span>}
                   </div>
                   <div className="button-row">
+                    <button className="icon-button compact secondary" disabled={pending} onClick={() => onRegenerate(interaction)}>
+                      <RefreshCw size={16} />
+                      Regenerate
+                    </button>
                     <button className="icon-button compact accent" disabled={pending} onClick={() => onApprove(interaction)}>
                       <CheckCircle2 size={16} />
                       Approve
@@ -2463,14 +2630,20 @@ function InteractionPanel({
               ) : null}
               <div className="button-row">
                 {interaction.status === "SUGGESTED" && !isReviewing ? (
-                  <button
-                    className="icon-button compact"
-                    disabled={pending}
-                    onClick={() => setReviewingInteractionId(interaction.id)}
-                  >
-                    <ShieldCheck size={16} />
-                    Review
-                  </button>
+                  <>
+                    <button className="icon-button compact secondary" disabled={pending} onClick={() => onRegenerate(interaction)}>
+                      <RefreshCw size={16} />
+                      Regenerate
+                    </button>
+                    <button
+                      className="icon-button compact"
+                      disabled={pending}
+                      onClick={() => setReviewingInteractionId(interaction.id)}
+                    >
+                      <ShieldCheck size={16} />
+                      Review
+                    </button>
+                  </>
                 ) : null}
               </div>
             </article>

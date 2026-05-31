@@ -1,10 +1,11 @@
 import OpenAI from "openai";
 import { env } from "./env";
-import { buildPersonaPrompt, formatDraftText } from "./policy";
+import { assessRisk, buildPersonaPrompt, formatDraftText, truncateForX } from "./policy";
 import type {
   CompanyMaterial,
   GeneratedDraftCandidate,
   Persona,
+  RiskLevel,
   SourcePost,
   TrendSnapshot,
   WeeklyRoleInput,
@@ -64,21 +65,42 @@ const companyContextSchema = {
   }
 };
 
+const replySuggestionSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["shouldSuggest", "suggestedText", "rationale", "riskLevel", "riskReasons"],
+  properties: {
+    shouldSuggest: { type: "boolean" },
+    suggestedText: { type: "string", maxLength: 280 },
+    rationale: { type: "string", maxLength: 300 },
+    riskLevel: { type: "string", enum: ["LOW", "MEDIUM", "HIGH"] },
+    riskReasons: {
+      type: "array",
+      items: { type: "string" }
+    }
+  }
+};
+
 type AiProvider = "openai" | "xai" | "claude";
-type AiPurpose = "draft" | "strategy";
+type AiPurpose = "draft" | "strategy" | "reply";
 type AiInputMessage = { role: string; content: string };
 type JsonSchema = Record<string, unknown>;
+export type ReplySuggestionContext = "published_post_reply" | "recent_interactor_post";
 
-function selectedAiProvider(): AiProvider {
-  if (env.draftAiProvider === "xai" || env.draftAiProvider === "grok") {
+function normalizeProvider(value: string | undefined): AiProvider {
+  if (value === "xai" || value === "grok") {
     return "xai";
   }
 
-  if (env.draftAiProvider === "claude" || env.draftAiProvider === "anthropic") {
+  if (value === "claude" || value === "anthropic") {
     return "claude";
   }
 
   return "openai";
+}
+
+function selectedAiProvider(purpose: "draft" | "reply" = "draft"): AiProvider {
+  return normalizeProvider(purpose === "reply" ? env.replyAiProvider : env.draftAiProvider);
 }
 
 function providerDisplayName(provider: AiProvider) {
@@ -129,13 +151,22 @@ function requireProviderConfigured(provider: AiProvider, feature: string) {
 
 function providerModel(provider: AiProvider, purpose: AiPurpose) {
   if (provider === "xai") {
+    if (purpose === "reply") {
+      return env.xaiReplyModel;
+    }
     return purpose === "draft" ? env.xaiDraftModel : env.xaiStrategyModel;
   }
 
   if (provider === "claude") {
+    if (purpose === "reply") {
+      return env.anthropicReplyModel;
+    }
     return purpose === "draft" ? env.anthropicDraftModel : env.anthropicStrategyModel;
   }
 
+  if (purpose === "reply") {
+    return env.openaiReplyModel;
+  }
   return purpose === "draft" ? env.openaiDraftModel : env.openaiStrategyModel;
 }
 
@@ -160,6 +191,10 @@ function parseResponseText(response: unknown): string {
       .filter(Boolean)
       .join("\n") ?? ""
   );
+}
+
+export function isReplyAiEnabled() {
+  return Boolean(env.replyAiProvider);
 }
 
 export async function generateDraftCandidates(args: {
@@ -271,6 +306,114 @@ export async function generateDraftCandidates(args: {
       sourcePostId: candidate.sourcePostId ?? undefined,
       trendSnapshotId: candidate.trendSnapshotId ?? undefined
     }))
+  };
+}
+
+export async function generateReplySuggestion(args: {
+  account: XAccount;
+  persona?: Persona;
+  sourcePost: SourcePost;
+  context?: ReplySuggestionContext;
+  publishedPostText?: string;
+  companyMaterials?: CompanyMaterial[];
+}): Promise<{ model: string; shouldSuggest: boolean; suggestedText: string; rationale: string; riskLevel: RiskLevel; riskReasons: string[] }> {
+  const provider = selectedAiProvider("reply");
+  requireProviderConfigured(provider, "AI reply suggestion generation");
+  const model = providerModel(provider, "reply");
+  const context = args.context ?? "published_post_reply";
+  const isRecentInteractorPost = context === "recent_interactor_post";
+  const materialDigest = (args.companyMaterials ?? []).slice(0, 4).map((material) => ({
+    type: material.type,
+    title: material.title,
+    content: material.content
+  }));
+  const sourceLabel = isRecentInteractorPost ? "otherPersonNewPost" : "otherPersonReply";
+  const sourceContext = isRecentInteractorPost
+    ? "The source post is a new public post from someone who recently interacted with this account. Write a natural reply/comment the account owner can review before publishing."
+    : "The other person replied to a post from this account. Respond naturally to their specific comment.";
+  const requirements = isRecentInteractorPost
+    ? [
+        "First decide whether this source post is worth replying to as this account.",
+        "Only suggest a reply if the post fits the replying account's role, audience, voice, company context, or content pillars.",
+        "If the post is unrelated, low-signal, private-life-only, ragebait, pure promotion, or would force a generic response, set shouldSuggest to false.",
+        "Return one reply only.",
+        "Keep it under 220 characters unless the source post clearly needs more context.",
+        "Make it specific to the other person's new post.",
+        "Use one of two modes: a quick reply that resonates with the person, or a substantive reply that adds meaningful useful information.",
+        "Only use the substantive mode when the other person is seriously discussing something with real substance.",
+        "If the source post is casual, funny, lightweight, or a simple aside, keep the reply casual and short.",
+        "Do not turn a joke, quick comment, or lightweight post into a serious essay.",
+        "Do not pretend to know the person beyond the recent interaction.",
+        "Do not ask for likes, follows, reposts, DMs, or sales calls.",
+        "Do not invent facts about the person, product, customer, or metrics."
+      ]
+    : [
+        "Return one reply only.",
+        "Keep it under 220 characters unless the source reply clearly needs more context.",
+        "Make it specific to the other person's reply.",
+        "Use one of two modes: a quick reply that resonates with the person, or a substantive reply that adds meaningful useful information.",
+        "Only use the substantive mode when the other person is seriously discussing something with real substance.",
+        "If the source reply is casual, funny, lightweight, or a simple aside, keep the reply casual and short.",
+        "Do not turn a joke, quick comment, or lightweight reply into a serious essay.",
+        "Acknowledge the point without over-thanking.",
+        "If the reply is vague but worth continuing, ask one natural follow-up question.",
+        "Do not invent facts about the person, product, customer, or metrics."
+      ];
+  const parsed = await generateStructuredJson<{
+    shouldSuggest: boolean;
+    suggestedText: string;
+    rationale: string;
+    riskLevel: RiskLevel;
+    riskReasons: string[];
+  }>({
+    provider,
+    model,
+    input: [
+      {
+        role: "system",
+        content: `You write concise, human-approved X replies that sound like a real person on X. ${sourceContext} Use natural, plainspoken language. Avoid overly literary, polished, academic, or corporate phrasing. Do not sound like customer support, a marketing bot, or a generic thank-you. Match the weight of the other person's post: quick and casual for lightweight posts, more substantive only when the other person is already discussing something substantive. Do not add hashtags. Avoid unsolicited mentions unless already present in the thread.`
+      },
+      {
+        role: "user",
+        content: JSON.stringify(
+          {
+            context,
+            replyingAs: {
+              username: args.account.username,
+              kind: args.account.kind,
+              role: args.persona?.roleLabel,
+              voice: args.persona?.voice,
+              audience: args.persona?.audience,
+              guardrails: args.persona?.guardrails,
+              avoidTopics: args.persona?.avoidTopics
+            },
+            publishedPost: args.publishedPostText,
+            [sourceLabel]: {
+              authorUsername: args.sourcePost.authorUsername,
+              text: args.sourcePost.text
+            },
+            companyContext: materialDigest,
+            requirements
+          },
+          null,
+          2
+        )
+      }
+    ],
+    schemaName: "reply_suggestion",
+    schema: replySuggestionSchema
+  });
+  const suggestedText = formatDraftText(truncateForX(parsed.suggestedText));
+  const localRisk = assessRisk(suggestedText);
+  const riskReasons = [...new Set([...(parsed.riskReasons ?? []), ...(localRisk.riskReasons ?? [])])];
+
+  return {
+    model: modelLabel(provider, model),
+    shouldSuggest: isRecentInteractorPost ? parsed.shouldSuggest : true,
+    suggestedText,
+    rationale: parsed.rationale.trim(),
+    riskLevel: localRisk.riskLevel === "HIGH" || parsed.riskLevel === "HIGH" ? "HIGH" : localRisk.riskLevel === "MEDIUM" || parsed.riskLevel === "MEDIUM" ? "MEDIUM" : "LOW",
+    riskReasons
   };
 }
 
