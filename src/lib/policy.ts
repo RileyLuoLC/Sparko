@@ -171,7 +171,6 @@ export function validateScheduleRequest(args: {
   }
 
   const duplicateWindowMs = args.workspace.duplicateWindowHours * 60 * 60 * 1000;
-  const minIntervalMs = args.workspace.minPostIntervalMinutes * 60 * 1000;
 
   for (const post of args.scheduledPosts) {
     if (post.status === "CANCELED" || post.status === "FAILED") {
@@ -187,28 +186,9 @@ export function validateScheduleRequest(args: {
     ) {
       return { ok: false, reason: "Duplicate or near-duplicate content is already scheduled in the safety window." };
     }
-
-    if (
-      post.xAccountId === args.xAccountId &&
-      Math.abs(existingTime - requestedTime) < minIntervalMs
-    ) {
-      return {
-        ok: false,
-        reason: `Posts on the same account must be at least ${formatInterval(args.workspace.minPostIntervalMinutes)} apart.`
-      };
-    }
   }
 
   return { ok: true, duplicateGroupKey };
-}
-
-function formatInterval(minutes: number) {
-  if (minutes % 60 === 0) {
-    const hours = minutes / 60;
-    return `${hours} hour${hours === 1 ? "" : "s"}`;
-  }
-
-  return `${minutes} minute${minutes === 1 ? "" : "s"}`;
 }
 
 export function validateDraftEditRequest(args: {

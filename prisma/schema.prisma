@@ -271,6 +271,7 @@ model ScheduledPost {
   id               String              @id @default(cuid())
   workspaceId      String
   draftPostId      String?
+  interactionSuggestionId String?
   xAccountId       String
   finalText        String
   scheduledFor     DateTime
@@ -278,14 +279,18 @@ model ScheduledPost {
   duplicateGroupKey String
   lastError        String?
   xPublishedPostId String?
+  replyToPostId    String?
+  quotePostId      String?
   createdAt        DateTime            @default(now())
   updatedAt        DateTime            @updatedAt
   workspace        Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   draftPost        DraftPost?          @relation(fields: [draftPostId], references: [id], onDelete: SetNull)
+  interactionSuggestion InteractionSuggestion? @relation(fields: [interactionSuggestionId], references: [id], onDelete: SetNull)
   xAccount         XAccount            @relation(fields: [xAccountId], references: [id], onDelete: Cascade)
   publishAttempts  PublishAttempt[]
 
   @@index([workspaceId, scheduledFor])
+  @@index([interactionSuggestionId])
 }
 
 model PublishAttempt {
@@ -322,6 +327,7 @@ model InteractionSuggestion {
   type            InteractionType
   suggestedText   String?
   rationale       String
+  context         Json?
   status          InteractionStatus @default(SUGGESTED)
   riskLevel       RiskLevel         @default(LOW)
   riskReasons     String[]
@@ -330,6 +336,7 @@ model InteractionSuggestion {
   workspace       Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   xAccount        XAccount          @relation(fields: [xAccountId], references: [id], onDelete: Cascade)
   sourcePost      SourcePost        @relation(fields: [sourcePostId], references: [id], onDelete: Cascade)
+  scheduledPosts  ScheduledPost[]
 }
 
 model AuditLog {

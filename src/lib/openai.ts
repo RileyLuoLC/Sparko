@@ -4,6 +4,7 @@ import { assessRisk, buildPersonaPrompt, formatDraftText, truncateForX } from ".
 import type {
   CompanyMaterial,
   GeneratedDraftCandidate,
+  InteractionContext,
   Persona,
   RiskLevel,
   SourcePost,
@@ -68,7 +69,7 @@ const companyContextSchema = {
 const replySuggestionSchema = {
   type: "object",
   additionalProperties: false,
-  required: ["shouldSuggest", "suggestedText", "rationale", "riskLevel", "riskReasons"],
+  required: ["shouldSuggest", "suggestedText", "rationale", "riskLevel", "riskReasons", "needsResearch", "researchQuery"],
   properties: {
     shouldSuggest: { type: "boolean" },
     suggestedText: { type: "string", maxLength: 280 },
@@ -77,7 +78,9 @@ const replySuggestionSchema = {
     riskReasons: {
       type: "array",
       items: { type: "string" }
-    }
+    },
+    needsResearch: { type: "boolean" },
+    researchQuery: { type: ["string", "null"], maxLength: 180 }
   }
 };
 
@@ -314,6 +317,7 @@ export async function generateReplySuggestion(args: {
   persona?: Persona;
   sourcePost: SourcePost;
   context?: ReplySuggestionContext;
+  conversationContext?: InteractionContext;
   publishedPostText?: string;
   companyMaterials?: CompanyMaterial[];
 }): Promise<{ model: string; shouldSuggest: boolean; suggestedText: string; rationale: string; riskLevel: RiskLevel; riskReasons: string[] }> {
@@ -341,6 +345,8 @@ export async function generateReplySuggestion(args: {
         "Make it specific to the other person's new post.",
         "Use one of two modes: a quick reply that resonates with the person, or a substantive reply that adds meaningful useful information.",
         "Only use the substantive mode when the other person is seriously discussing something with real substance.",
+        "If a substantive reply would need current external facts, web research, benchmarks, pricing, laws, product details, or citations not present in context, set needsResearch to true and provide a short researchQuery.",
+        "If needsResearch is true and no research context is provided, do not invent facts. Use a natural non-factual reply or ask a useful question instead.",
         "If the source post is casual, funny, lightweight, or a simple aside, keep the reply casual and short.",
         "Do not turn a joke, quick comment, or lightweight post into a serious essay.",
         "Do not pretend to know the person beyond the recent interaction.",
@@ -353,6 +359,8 @@ export async function generateReplySuggestion(args: {
         "Make it specific to the other person's reply.",
         "Use one of two modes: a quick reply that resonates with the person, or a substantive reply that adds meaningful useful information.",
         "Only use the substantive mode when the other person is seriously discussing something with real substance.",
+        "If a substantive reply would need current external facts, web research, benchmarks, pricing, laws, product details, or citations not present in context, set needsResearch to true and provide a short researchQuery.",
+        "If needsResearch is true and no research context is provided, do not invent facts. Use a natural non-factual reply or ask a useful question instead.",
         "If the source reply is casual, funny, lightweight, or a simple aside, keep the reply casual and short.",
         "Do not turn a joke, quick comment, or lightweight reply into a serious essay.",
         "Acknowledge the point without over-thanking.",
@@ -365,13 +373,15 @@ export async function generateReplySuggestion(args: {
     rationale: string;
     riskLevel: RiskLevel;
     riskReasons: string[];
+    needsResearch: boolean;
+    researchQuery: string | null;
   }>({
     provider,
     model,
     input: [
       {
         role: "system",
-        content: `You write concise, human-approved X replies that sound like a real person on X. ${sourceContext} Use natural, plainspoken language. Avoid overly literary, polished, academic, or corporate phrasing. Do not sound like customer support, a marketing bot, or a generic thank-you. Match the weight of the other person's post: quick and casual for lightweight posts, more substantive only when the other person is already discussing something substantive. Do not add hashtags. Avoid unsolicited mentions unless already present in the thread.`
+        content: `You write concise, human-approved X replies that sound like a real person on X. ${sourceContext} Use the conversation context to understand what has already been said before writing the reply. Use natural, plainspoken language. Avoid overly literary, polished, academic, or corporate phrasing. Do not sound like customer support, a marketing bot, or a generic thank-you. Match the weight of the other person's post: quick and casual for lightweight posts, more substantive only when the other person is already discussing something substantive. You do not have live web access in this API call unless research context is explicitly provided, so never pretend to have researched current facts. If web research would materially improve a substantive reply, set needsResearch to true and avoid unsupported factual claims. Do not add hashtags. Avoid unsolicited mentions unless already present in the thread.`
       },
       {
         role: "user",
@@ -388,6 +398,12 @@ export async function generateReplySuggestion(args: {
               avoidTopics: args.persona?.avoidTopics
             },
             publishedPost: args.publishedPostText,
+            conversationContext: args.conversationContext?.posts.map((post) => ({
+              label: post.label,
+              username: post.username,
+              text: post.text,
+              postedAt: post.postedAt
+            })),
             [sourceLabel]: {
               authorUsername: args.sourcePost.authorUsername,
               text: args.sourcePost.text
@@ -405,14 +421,21 @@ export async function generateReplySuggestion(args: {
   });
   const suggestedText = formatDraftText(truncateForX(parsed.suggestedText));
   const localRisk = assessRisk(suggestedText);
-  const riskReasons = [...new Set([...(parsed.riskReasons ?? []), ...(localRisk.riskReasons ?? [])])];
+  const researchReason = parsed.needsResearch
+    ? `External research recommended before approval${parsed.researchQuery ? `: ${parsed.researchQuery}` : "."}`
+    : undefined;
+  const riskReasons = [
+    ...new Set([...(parsed.riskReasons ?? []), ...(localRisk.riskReasons ?? []), ...(researchReason ? [researchReason] : [])])
+  ];
+  const modelRiskLevel =
+    parsed.needsResearch && parsed.riskLevel === "LOW" ? "MEDIUM" : parsed.riskLevel;
 
   return {
     model: modelLabel(provider, model),
     shouldSuggest: isRecentInteractorPost ? parsed.shouldSuggest : true,
     suggestedText,
     rationale: parsed.rationale.trim(),
-    riskLevel: localRisk.riskLevel === "HIGH" || parsed.riskLevel === "HIGH" ? "HIGH" : localRisk.riskLevel === "MEDIUM" || parsed.riskLevel === "MEDIUM" ? "MEDIUM" : "LOW",
+    riskLevel: localRisk.riskLevel === "HIGH" || modelRiskLevel === "HIGH" ? "HIGH" : localRisk.riskLevel === "MEDIUM" || modelRiskLevel === "MEDIUM" ? "MEDIUM" : "LOW",
     riskReasons
   };
 }

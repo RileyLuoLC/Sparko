@@ -1224,6 +1224,28 @@ const interactions: InteractionSuggestion[] = [
     status: "SUGGESTED",
     riskLevel: "LOW",
     riskReasons: [],
+    context: {
+      kind: "published_post_reply",
+      summary: "Demo conversation context for a reply suggestion.",
+      posts: [
+        {
+          id: "800001",
+          label: "Your original post",
+          username: "demo_company",
+          text: "Teams do not need another autonomous agent demo. They need an ops loop they can trust: draft, review, schedule, publish, learn.",
+          url: "https://example.com/demo-posts/800001",
+          postedAt: hoursAgo(52)
+        },
+        {
+          id: "demo_source_003",
+          label: "Their reply",
+          username: "example_ops",
+          text: "@demo_company internal AI tools need boring controls: ownership, logs, approvals, rollback. That is what gets them adopted.",
+          url: "https://example.com/demo-posts/demo_source_003",
+          postedAt: hoursAgo(6)
+        }
+      ]
+    },
     createdAt: hoursAgo(1),
     updatedAt: hoursAgo(1)
   },
@@ -1238,6 +1260,28 @@ const interactions: InteractionSuggestion[] = [
     status: "SUGGESTED",
     riskLevel: "LOW",
     riskReasons: [],
+    context: {
+      kind: "published_post_reply",
+      summary: "Demo conversation context for a reply suggestion.",
+      posts: [
+        {
+          id: "800002",
+          label: "Your original post",
+          username: "demo_personal",
+          text: "AI workflows get adopted when the review step feels boring: clear owner, clear context, clear undo path.",
+          url: "https://example.com/demo-posts/800002",
+          postedAt: hoursAgo(30)
+        },
+        {
+          id: "demo_source_001",
+          label: "Their reply",
+          username: "example_builder",
+          text: "The strongest AI agent demos are not the ones doing everything. They are the ones with clear handoffs, approvals, and recovery paths.",
+          url: "https://example.com/demo-posts/demo_source_001",
+          postedAt: hoursAgo(3)
+        }
+      ]
+    },
     createdAt: hoursAgo(1),
     updatedAt: hoursAgo(1)
   }
@@ -2288,8 +2332,19 @@ export function deleteDraft(draftId: string) {
   return draft;
 }
 
-export function schedulePost(input: { draftPostId?: string; xAccountId: string; finalText: string; scheduledFor: string }) {
+export function schedulePost(input: {
+  draftPostId?: string;
+  interactionSuggestionId?: string;
+  xAccountId: string;
+  finalText: string;
+  scheduledFor: string;
+  replyToPostId?: string;
+  quotePostId?: string;
+}) {
   const draft = input.draftPostId ? store.drafts.find((item) => item.id === input.draftPostId) : undefined;
+  const interaction = input.interactionSuggestionId
+    ? store.interactions.find((item) => item.id === input.interactionSuggestionId)
+    : undefined;
   const account = store.xAccounts.find((item) => item.id === input.xAccountId);
 
   if (!account) {
@@ -2318,11 +2373,14 @@ export function schedulePost(input: { draftPostId?: string; xAccountId: string; 
     id: id("scheduled"),
     workspaceId: workspace.id,
     draftPostId: draft?.id,
+    interactionSuggestionId: interaction?.id,
     xAccountId: account.id,
     finalText: truncateForX(input.finalText),
     scheduledFor: scheduledFor.toISOString(),
     status: "QUEUED",
     duplicateGroupKey: validation.duplicateGroupKey,
+    replyToPostId: input.replyToPostId,
+    quotePostId: input.quotePostId,
     createdAt: nowIso(),
     updatedAt: nowIso()
   };
@@ -2331,12 +2389,19 @@ export function schedulePost(input: { draftPostId?: string; xAccountId: string; 
     draft.status = "SCHEDULED";
     draft.updatedAt = nowIso();
   }
+  if (interaction) {
+    interaction.status = "APPROVED";
+    interaction.updatedAt = nowIso();
+  }
 
   store.scheduledPosts.push(scheduledPost);
   audit("post.scheduled", "ScheduledPost", scheduledPost.id, {
     draftPostId: draft?.id ?? null,
+    interactionSuggestionId: interaction?.id ?? null,
     xAccountId: account.id,
-    scheduledFor: scheduledPost.scheduledFor
+    scheduledFor: scheduledPost.scheduledFor,
+    replyToPostId: input.replyToPostId ?? null,
+    quotePostId: input.quotePostId ?? null
   });
   return scheduledPost;
 }
@@ -2400,6 +2465,13 @@ export function cancelScheduledPost(id: string) {
     draft.status = "APPROVED";
     draft.updatedAt = nowIso();
   }
+  const interaction = scheduledPost.interactionSuggestionId
+    ? store.interactions.find((item) => item.id === scheduledPost.interactionSuggestionId)
+    : undefined;
+  if (interaction?.status === "APPROVED") {
+    interaction.status = "SUGGESTED";
+    interaction.updatedAt = nowIso();
+  }
   audit("post.schedule_canceled", "ScheduledPost", scheduledPost.id, {});
   return scheduledPost;
 }
@@ -2430,6 +2502,26 @@ export function approveInteraction(interactionId: string) {
     apiEligible: apiEligibility.ok,
     reason: apiEligibility.ok ? undefined : apiEligibility.reason
   };
+}
+
+export function cancelInteraction(interactionId: string) {
+  const interaction = store.interactions.find((item) => item.id === interactionId);
+  if (!interaction) {
+    throw new Error("Interaction suggestion not found.");
+  }
+  if (interaction.status === "EXECUTED") {
+    throw new Error("Executed interaction suggestions cannot be canceled.");
+  }
+
+  const previousStatus = interaction.status;
+  interaction.status = "REJECTED";
+  interaction.updatedAt = nowIso();
+
+  audit("interaction.rejected", "InteractionSuggestion", interaction.id, {
+    previousStatus
+  });
+
+  return { interaction };
 }
 
 export function regenerateReplyInteraction(interactionId: string) {

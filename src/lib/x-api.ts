@@ -261,7 +261,7 @@ export async function searchRecentPosts(
   const params = new URLSearchParams({
     query,
     max_results: String(maxResults),
-    "tweet.fields": "created_at,public_metrics,author_id",
+    "tweet.fields": "created_at,public_metrics,author_id,conversation_id,referenced_tweets",
     expansions: "author_id",
     "user.fields": "username,name,verified"
   });
@@ -321,7 +321,9 @@ export async function lookupPosts(ids: string[], token = env.xBearerToken) {
 
   const params = new URLSearchParams({
     ids: ids.join(","),
-    "tweet.fields": "created_at,public_metrics,author_id"
+    "tweet.fields": "created_at,public_metrics,author_id,conversation_id,referenced_tweets",
+    expansions: "author_id",
+    "user.fields": "username,name,verified"
   });
   return xFetch(`/2/tweets?${params.toString()}`, {}, token);
 }

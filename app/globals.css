@@ -1215,6 +1215,7 @@ textarea:focus {
 .weekly-input-card > div:first-child div,
 .template-card-head > div:first-child,
 .draft-head > div,
+.calendar-card-head > div,
 .calendar-account-head > div,
 .selected-account-row div,
 .material-head div,
@@ -1329,11 +1330,43 @@ textarea:focus {
   white-space: pre-line;
 }
 
+.interaction-thread,
 .interaction-source,
 .interaction-suggestion {
   display: grid;
   gap: 6px;
   min-width: 0;
+}
+
+.interaction-thread {
+  padding: 11px;
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  background: var(--panel-soft);
+}
+
+.interaction-thread-list {
+  display: grid;
+  gap: 14px;
+}
+
+.interaction-thread-item {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+  padding-left: 10px;
+  border-left: 2px solid var(--border);
+}
+
+.interaction-thread-item div {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.interaction-thread-item strong {
+  font-size: 0.82rem;
 }
 
 .interaction-source {
@@ -1343,6 +1376,7 @@ textarea:focus {
   background: var(--panel-soft);
 }
 
+.interaction-thread > span,
 .interaction-source span,
 .interaction-suggestion span {
   color: var(--text-muted);
@@ -1350,9 +1384,31 @@ textarea:focus {
   line-height: 1.2;
 }
 
+.interaction-thread-item span {
+  color: var(--text-muted);
+  font-size: 0.74rem;
+}
+
+.interaction-thread-item p,
 .interaction-source p,
 .interaction-suggestion p {
   margin: 0;
+}
+
+.interaction-schedule {
+  display: grid;
+  gap: 10px;
+}
+
+.interaction-schedule label {
+  display: grid;
+  gap: 6px;
+}
+
+.interaction-schedule label > span {
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  font-weight: 700;
 }
 
 .draft-submit-row {
@@ -1445,8 +1501,47 @@ textarea:focus {
 .pulse-dot {
   width: 8px;
   height: 8px;
+  flex: 0 0 auto;
   border-radius: 50%;
   background: var(--good);
+}
+
+.inline-feedback {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 9px 10px;
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  color: var(--text-muted);
+  background: var(--panel-soft);
+  font-size: 0.82rem;
+  line-height: 1.35;
+}
+
+.inline-feedback.success {
+  color: var(--good);
+  border-color: #cde7d9;
+  background: var(--good-soft);
+}
+
+.inline-feedback.error {
+  color: var(--bad);
+  border-color: #edc9be;
+  background: var(--bad-soft);
+}
+
+.inline-feedback.pending .pulse-dot {
+  background: var(--info);
+}
+
+.inline-feedback.success .pulse-dot {
+  background: var(--good);
+}
+
+.inline-feedback.error .pulse-dot {
+  background: var(--bad);
 }
 
 .modal-backdrop {
@@ -1580,11 +1675,10 @@ textarea:focus {
 }
 
 .calendar-card p {
-  display: -webkit-box;
-  min-height: 112px;
-  overflow: hidden;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 5;
+  min-height: 0;
+  overflow: visible;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
 }
 
 .published-post-grid {

@@ -202,7 +202,7 @@ describe("scheduling policy", () => {
     });
   });
 
-  it("enforces a 4 hour minimum interval on the same account", () => {
+  it("allows same-account posts close together when the content is different", () => {
     const result = validateScheduleRequest({
       workspace,
       scheduledPosts: [scheduled({ xAccountId: "account" })],
@@ -212,8 +212,7 @@ describe("scheduling policy", () => {
       scheduledFor: new Date("2026-05-22T10:00:00.000Z"),
       now
     });
-    expect(result.ok).toBe(false);
-    expect(result).toMatchObject({ reason: "Posts on the same account must be at least 4 hours apart." });
+    expect(result.ok).toBe(true);
   });
 });
 

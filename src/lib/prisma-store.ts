@@ -29,6 +29,7 @@ import type {
   DashboardData,
   DraftPost,
   GeneratedDraftCandidate,
+  InteractionContext,
   InteractionSuggestion,
   Persona,
   ScheduledPost,
@@ -81,6 +82,7 @@ function publicScheduledPost(post: any): ScheduledPost {
     id: post.id,
     workspaceId: post.workspaceId,
     draftPostId: post.draftPostId ?? undefined,
+    interactionSuggestionId: post.interactionSuggestionId ?? undefined,
     xAccountId: post.xAccountId,
     finalText: post.finalText,
     scheduledFor: toIso(post.scheduledFor),
@@ -88,6 +90,8 @@ function publicScheduledPost(post: any): ScheduledPost {
     duplicateGroupKey: post.duplicateGroupKey,
     lastError: post.lastError ?? undefined,
     xPublishedPostId: post.xPublishedPostId ?? undefined,
+    replyToPostId: post.replyToPostId ?? undefined,
+    quotePostId: post.quotePostId ?? undefined,
     createdAt: toIso(post.createdAt),
     updatedAt: toIso(post.updatedAt)
   };
@@ -177,6 +181,8 @@ function publicTrend(trend: any): TrendSnapshot {
 }
 
 function publicInteraction(interaction: any): InteractionSuggestion {
+  const context = normalizeInteractionContext(interaction.context);
+
   return {
     id: interaction.id,
     workspaceId: interaction.workspaceId,
@@ -188,8 +194,35 @@ function publicInteraction(interaction: any): InteractionSuggestion {
     status: interaction.status,
     riskLevel: interaction.riskLevel,
     riskReasons: interaction.riskReasons,
+    context,
     createdAt: toIso(interaction.createdAt),
     updatedAt: toIso(interaction.updatedAt)
+  };
+}
+
+function normalizeInteractionContext(value: unknown): InteractionContext | undefined {
+  if (!value || typeof value !== "object") {
+    return undefined;
+  }
+
+  const candidate = value as InteractionContext;
+  if (!Array.isArray(candidate.posts)) {
+    return undefined;
+  }
+
+  return {
+    kind: candidate.kind === "recent_interactor_post" ? "recent_interactor_post" : "published_post_reply",
+    summary: typeof candidate.summary === "string" ? candidate.summary : undefined,
+    posts: candidate.posts
+      .filter((post) => post && typeof post.text === "string" && post.text.trim())
+      .map((post) => ({
+        id: typeof post.id === "string" ? post.id : undefined,
+        label: typeof post.label === "string" ? post.label : "Context",
+        username: typeof post.username === "string" ? post.username : undefined,
+        text: post.text,
+        url: typeof post.url === "string" ? post.url : undefined,
+        postedAt: typeof post.postedAt === "string" ? post.postedAt : undefined
+      }))
   };
 }
 
@@ -936,9 +969,12 @@ async function freshAccountToken(account: any) {
 
 export async function schedulePostInPrisma(input: {
   draftPostId?: string;
+  interactionSuggestionId?: string;
   xAccountId: string;
   finalText: string;
   scheduledFor: string;
+  replyToPostId?: string;
+  quotePostId?: string;
 }) {
   const { workspace } = await ensureWorkspace();
   const account = await prisma.xAccount.findUnique({ where: { id: input.xAccountId } });
@@ -947,6 +983,23 @@ export async function schedulePostInPrisma(input: {
   }
 
   const draft = input.draftPostId ? await prisma.draftPost.findUnique({ where: { id: input.draftPostId } }) : undefined;
+  const interaction = input.interactionSuggestionId
+    ? await prisma.interactionSuggestion.findUnique({
+        where: { id: input.interactionSuggestionId },
+        include: { sourcePost: true }
+      })
+    : undefined;
+  if (interaction) {
+    if (interaction.workspaceId !== workspace.id || interaction.xAccountId !== account.id) {
+      throw new Error("Interaction suggestion does not match this X account.");
+    }
+    if (!["SUGGESTED", "BLOCKED"].includes(interaction.status)) {
+      throw new Error("Only pending interaction suggestions can be scheduled.");
+    }
+  }
+
+  const replyToPostId = input.replyToPostId ?? (interaction?.type === "REPLY" ? interaction.sourcePost.xPostId : undefined);
+  const quotePostId = input.quotePostId ?? (interaction?.type === "QUOTE" ? interaction.sourcePost.xPostId : undefined);
   const scheduledFor = new Date(input.scheduledFor);
   if (Number.isNaN(scheduledFor.getTime())) {
     throw new Error("Invalid scheduled time.");
@@ -969,21 +1022,30 @@ export async function schedulePostInPrisma(input: {
     data: {
       workspaceId: workspace.id,
       draftPostId: draft?.id,
+      interactionSuggestionId: interaction?.id,
       xAccountId: account.id,
       finalText: truncateForX(input.finalText),
       scheduledFor,
       status: "QUEUED",
-      duplicateGroupKey: validation.duplicateGroupKey
+      duplicateGroupKey: validation.duplicateGroupKey,
+      replyToPostId,
+      quotePostId
     }
   });
 
   if (draft) {
     await prisma.draftPost.update({ where: { id: draft.id }, data: { status: "SCHEDULED" } });
   }
+  if (interaction) {
+    await prisma.interactionSuggestion.update({ where: { id: interaction.id }, data: { status: "APPROVED" } });
+  }
   await audit("post.scheduled", "ScheduledPost", scheduledPost.id, {
     draftPostId: draft?.id ?? null,
+    interactionSuggestionId: interaction?.id ?? null,
     xAccountId: account.id,
-    scheduledFor: scheduledPost.scheduledFor.toISOString()
+    scheduledFor: scheduledPost.scheduledFor.toISOString(),
+    replyToPostId: replyToPostId ?? null,
+    quotePostId: quotePostId ?? null
   });
   return publicScheduledPost(scheduledPost);
 }
@@ -1064,6 +1126,12 @@ export async function cancelScheduledPostInPrisma(id: string) {
   if (scheduledPost.draftPostId && scheduledPost.draftPost?.status === "SCHEDULED") {
     await prisma.draftPost.update({ where: { id: scheduledPost.draftPostId }, data: { status: "APPROVED" } });
   }
+  if (scheduledPost.interactionSuggestionId) {
+    await prisma.interactionSuggestion.update({
+      where: { id: scheduledPost.interactionSuggestionId },
+      data: { status: "SUGGESTED" }
+    });
+  }
   await audit("post.schedule_canceled", "ScheduledPost", scheduledPost.id, {});
   return publicScheduledPost(updated);
 }
@@ -1091,8 +1159,17 @@ export async function publishScheduledPost(scheduledPostId: string) {
 
   try {
     const accessToken = await freshAccountToken(scheduledPost.xAccount);
-    const payload = { text: scheduledPost.finalText };
-    const response = await createPost({ accessToken, text: scheduledPost.finalText });
+    const payload = {
+      text: scheduledPost.finalText,
+      replyToPostId: scheduledPost.replyToPostId ?? null,
+      quotePostId: scheduledPost.quotePostId ?? null
+    };
+    const response = await createPost({
+      accessToken,
+      text: scheduledPost.finalText,
+      replyToPostId: scheduledPost.replyToPostId ?? undefined,
+      quotePostId: scheduledPost.quotePostId ?? undefined
+    });
     const xPublishedPostId = response?.data?.id;
     if (!xPublishedPostId) {
       throw new Error("X create post response did not include a post id.");
@@ -1114,6 +1191,12 @@ export async function publishScheduledPost(scheduledPostId: string) {
     if (scheduledPost.draftPostId) {
       await prisma.draftPost.update({ where: { id: scheduledPost.draftPostId }, data: { status: "PUBLISHED" } });
     }
+    if (scheduledPost.interactionSuggestionId) {
+      await prisma.interactionSuggestion.update({
+        where: { id: scheduledPost.interactionSuggestionId },
+        data: { status: "EXECUTED" }
+      });
+    }
     await audit("post.published", "ScheduledPost", scheduledPost.id, { xPublishedPostId });
     await enqueueMetricsSync([xPublishedPostId]);
     await enqueueMetricsSync([xPublishedPostId], 15 * 60 * 1000);
@@ -1133,7 +1216,11 @@ export async function publishScheduledPost(scheduledPostId: string) {
       data: {
         scheduledPostId,
         attemptNumber,
-        requestPayload: { text: scheduledPost.finalText },
+        requestPayload: {
+          text: scheduledPost.finalText,
+          replyToPostId: scheduledPost.replyToPostId ?? null,
+          quotePostId: scheduledPost.quotePostId ?? null
+        },
         error: message
       }
     });
@@ -1203,6 +1290,7 @@ async function replySuggestionDraft(args: {
   persona?: Persona;
   companyMaterials?: CompanyMaterial[];
   context: ReplySuggestionContext;
+  conversationContext?: InteractionContext;
   publishedPostText?: string;
   allowLocalFallback?: boolean;
 }) {
@@ -1281,6 +1369,7 @@ async function suggestReplyForSourcePost(args: {
   persona?: Persona;
   companyMaterials?: CompanyMaterial[];
   context: ReplySuggestionContext;
+  conversationContext?: InteractionContext;
   publishedPostText?: string;
   allowLocalFallback?: boolean;
 }): Promise<InteractionSuggestion | null> {
@@ -1305,6 +1394,7 @@ async function suggestReplyForSourcePost(args: {
       type: "REPLY",
       suggestedText: draft.suggestedText,
       rationale: replyOpportunityRationale(args.context, sourcePost, account, draft.rationale),
+      context: args.conversationContext ? JSON.parse(JSON.stringify(args.conversationContext)) : undefined,
       riskLevel: draft.riskLevel ?? "LOW",
       riskReasons: draft.riskReasons ?? []
     }
@@ -1338,12 +1428,14 @@ export async function regenerateReplyInteractionSuggestionInPrisma(interactionId
   const sourcePost = publicSourcePost(interaction.sourcePost);
   const account = publicXAccount(interaction.xAccount);
   const context = inferReplySuggestionContext(interaction.rationale);
+  const conversationContext = normalizeInteractionContext(interaction.context);
   const draft = await replySuggestionDraft({
     sourcePost,
     account,
     persona: interaction.xAccount.persona ? publicPersona(interaction.xAccount.persona) : undefined,
     companyMaterials,
     context,
+    conversationContext,
     allowLocalFallback: false
   });
   if (!draft.shouldSuggest || !draft.suggestedText.trim()) {
@@ -1371,6 +1463,8 @@ type LiveReplyTweet = {
   id: string;
   text?: string;
   author_id?: string;
+  conversation_id?: string;
+  referenced_tweets?: Array<{ type?: string; id?: string }>;
   created_at?: string;
   public_metrics?: {
     like_count?: number;
@@ -1424,6 +1518,93 @@ async function upsertLiveSourcePost(workspaceId: string, tweet: LiveReplyTweet, 
   return publicSourcePost(sourcePost);
 }
 
+function interactionContextPostFromSource(label: string, sourcePost: SourcePost) {
+  return {
+    id: sourcePost.xPostId,
+    label,
+    username: sourcePost.authorUsername,
+    text: sourcePost.text,
+    url: sourcePost.url,
+    postedAt: sourcePost.postedAt
+  };
+}
+
+function buildPublishedReplyContext(args: {
+  publishedPost: { finalText: string; scheduledFor: Date; xPublishedPostId: string | null; xAccount: { username: string } };
+  sourcePost: SourcePost;
+  parentPost?: SourcePost;
+}): InteractionContext {
+  const originalUrl = args.publishedPost.xPublishedPostId
+    ? `https://x.com/${args.publishedPost.xAccount.username}/status/${args.publishedPost.xPublishedPostId}`
+    : undefined;
+  const posts: InteractionContext["posts"] = [
+    {
+      id: args.publishedPost.xPublishedPostId ?? undefined,
+      label: "Your original post",
+      username: args.publishedPost.xAccount.username,
+      text: args.publishedPost.finalText,
+      url: originalUrl,
+      postedAt: toIso(args.publishedPost.scheduledFor)
+    }
+  ];
+
+  if (args.parentPost && args.parentPost.xPostId !== args.publishedPost.xPublishedPostId && args.parentPost.xPostId !== args.sourcePost.xPostId) {
+    posts.push(interactionContextPostFromSource("Earlier in the thread", args.parentPost));
+  }
+
+  posts.push(interactionContextPostFromSource("Their reply", args.sourcePost));
+
+  return {
+    kind: "published_post_reply",
+    summary: "The reply suggestion should consider the original post and the visible conversation context.",
+    posts
+  };
+}
+
+function buildRecentInteractorContext(sourcePost: SourcePost, account: XAccount): InteractionContext {
+  return {
+    kind: "recent_interactor_post",
+    summary: `@${sourcePost.authorUsername} recently interacted with @${account.username}; this is their new post being considered for a proactive reply.`,
+    posts: [interactionContextPostFromSource("Their new post", sourcePost)]
+  };
+}
+
+async function loadParentReplySourcePost(args: {
+  workspaceId: string;
+  tweet: LiveReplyTweet;
+  originalPostId: string;
+  token?: string;
+  tweetsById: Map<string, LiveReplyTweet>;
+  usersById: Map<string, LiveReplyUser>;
+}) {
+  const parentPostId = args.tweet.referenced_tweets?.find((reference) => reference.type === "replied_to")?.id;
+  if (!parentPostId || parentPostId === args.originalPostId || parentPostId === args.tweet.id) {
+    return undefined;
+  }
+
+  const localParent = args.tweetsById.get(parentPostId);
+  if (localParent) {
+    const author = localParent.author_id ? args.usersById.get(localParent.author_id) : undefined;
+    return upsertLiveSourcePost(args.workspaceId, localParent, author);
+  }
+
+  try {
+    const result = await lookupPosts([parentPostId], args.token);
+    const parentTweet = (result?.data ?? [])[0] as LiveReplyTweet | undefined;
+    if (!parentTweet) {
+      return undefined;
+    }
+
+    const lookupUsersById = new Map(
+      ((result?.includes?.users ?? []) as LiveReplyUser[]).map((user) => [user.id, user])
+    );
+    const author = parentTweet.author_id ? lookupUsersById.get(parentTweet.author_id) : undefined;
+    return upsertLiveSourcePost(args.workspaceId, parentTweet, author);
+  } catch {
+    return undefined;
+  }
+}
+
 export async function syncReplyInteractionSuggestionsInPrisma(limit = 10) {
   const { workspace } = await ensureWorkspace();
   const syncLimit = Math.max(1, Math.min(limit, 20));
@@ -1466,6 +1647,7 @@ export async function syncReplyInteractionSuggestionsInPrisma(limit = 10) {
     const usersById = new Map(
       ((searchResult?.includes?.users ?? []) as LiveReplyUser[]).map((user) => [user.id, user])
     );
+    const tweetsById = new Map(((searchResult?.data ?? []) as LiveReplyTweet[]).map((tweet) => [tweet.id, tweet]));
     const tweets = ((searchResult?.data ?? []) as LiveReplyTweet[]).filter(
       (tweet) => tweet.id !== post.xPublishedPostId && tweet.author_id !== post.xAccount.xUserId && tweet.text?.trim()
     );
@@ -1473,6 +1655,19 @@ export async function syncReplyInteractionSuggestionsInPrisma(limit = 10) {
     for (const tweet of tweets) {
       const author = tweet.author_id ? usersById.get(tweet.author_id) : undefined;
       const publicSource = await upsertLiveSourcePost(workspace.id, tweet, author);
+      const parentSource = await loadParentReplySourcePost({
+        workspaceId: workspace.id,
+        tweet,
+        originalPostId: post.xPublishedPostId,
+        token: accessToken,
+        tweetsById,
+        usersById
+      });
+      const conversationContext = buildPublishedReplyContext({
+        publishedPost: post,
+        sourcePost: publicSource,
+        parentPost: parentSource
+      });
       sourcePosts.push(publicSource);
       const interaction = await suggestReplyForSourcePost({
         sourcePost: publicSource,
@@ -1480,6 +1675,7 @@ export async function syncReplyInteractionSuggestionsInPrisma(limit = 10) {
         persona: post.xAccount.persona ? publicPersona(post.xAccount.persona) : undefined,
         companyMaterials,
         context: "published_post_reply",
+        conversationContext,
         publishedPostText: post.finalText,
         allowLocalFallback: true
       });
@@ -1562,6 +1758,7 @@ export async function syncReplyInteractionSuggestionsInPrisma(limit = 10) {
         persona: pair.account.persona ? publicPersona(pair.account.persona) : undefined,
         companyMaterials,
         context: "recent_interactor_post",
+        conversationContext: buildRecentInteractorContext(publicSource, publicXAccount(pair.account)),
         allowLocalFallback: true
       });
 
@@ -1727,6 +1924,28 @@ export async function approveInteractionInPrisma(interactionId: string) {
   });
   await audit("interaction.executed", "InteractionSuggestion", interaction.id, { type: interaction.type });
   return { interaction: publicInteraction(executed), apiEligible: true };
+}
+
+export async function cancelInteractionInPrisma(interactionId: string) {
+  const interaction = await prisma.interactionSuggestion.findUnique({
+    where: { id: interactionId }
+  });
+  if (!interaction) {
+    throw new Error("Interaction suggestion not found.");
+  }
+  if (interaction.status === "EXECUTED") {
+    throw new Error("Executed interaction suggestions cannot be canceled.");
+  }
+
+  const canceled = await prisma.interactionSuggestion.update({
+    where: { id: interaction.id },
+    data: { status: "REJECTED" }
+  });
+  await audit("interaction.rejected", "InteractionSuggestion", interaction.id, {
+    previousStatus: interaction.status
+  });
+
+  return { interaction: publicInteraction(canceled) };
 }
 
 export async function syncMetricsForPublishedPosts(postIds: string[]) {

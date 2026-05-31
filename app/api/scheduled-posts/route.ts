@@ -6,9 +6,12 @@ import { enqueueScheduledPost } from "@/lib/queue";
 
 const ScheduleSchema = z.object({
   draftPostId: z.string().optional(),
+  interactionSuggestionId: z.string().optional(),
   xAccountId: z.string().min(1),
   finalText: z.string().min(1).max(280),
-  scheduledFor: z.string().datetime()
+  scheduledFor: z.string().datetime(),
+  replyToPostId: z.string().optional(),
+  quotePostId: z.string().optional()
 });
 
 export async function POST(request: Request) {

@@ -29,12 +29,14 @@ import type {
   DashboardData,
   DraftPost,
   GeneratedDraftCandidate,
+  InteractionContext,
   InteractionSuggestion,
   Persona,
   ReadinessData,
   ReadinessStatus,
   RoleInputTemplate,
   ScheduledPost,
+  SourcePost,
   WeeklyRoleInput,
   XAccount
 } from "@/lib/types";
@@ -94,6 +96,21 @@ type WeeklyRoleInputInput = {
 type DashboardShellProps = {
   mode?: "console" | "background";
 };
+
+type ActionFeedback = {
+  scope: string;
+  kind: "pending" | "success" | "error";
+  message: string;
+};
+
+function isActionFeedbackResult(value: unknown): value is { message: string; scope?: string } {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "message" in value &&
+    typeof (value as { message?: unknown }).message === "string"
+  );
+}
 
 const BASE_TIME_ZONE_OPTIONS = [
   "America/Los_Angeles",
@@ -300,7 +317,23 @@ const statusTone: Record<string, string> = {
   EXECUTED: "good"
 };
 
-function AppFrame({ mode, children }: { mode: "console" | "background"; children: React.ReactNode }) {
+function backgroundHref(accountId?: string, hash = "") {
+  return {
+    pathname: "/background" as const,
+    query: accountId ? { account: accountId } : undefined,
+    hash: hash.replace(/^#/, "") || undefined
+  };
+}
+
+function AppFrame({
+  mode,
+  selectedAccountId,
+  children
+}: {
+  mode: "console" | "background";
+  selectedAccountId?: string;
+  children: React.ReactNode;
+}) {
   return (
     <main className="app-shell">
       <div className="app-frame">
@@ -336,15 +369,15 @@ function AppFrame({ mode, children }: { mode: "console" | "background"; children
               <div className="sidebar-section-head">
                 <span>Setup</span>
               </div>
-              <Link className={mode === "background" ? "sidebar-item active" : "sidebar-item"} href="/background">
+              <Link className={mode === "background" ? "sidebar-item active" : "sidebar-item"} href={backgroundHref(selectedAccountId)}>
                 <Users2 size={14} />
                 Account Info
               </Link>
-              <Link className="sidebar-item" href="/background#company-information">
+              <Link className="sidebar-item" href={backgroundHref(selectedAccountId, "#company-information")}>
                 <FileText size={14} />
                 Company Info
               </Link>
-              <Link className="sidebar-item" href="/background#weekly-input-templates">
+              <Link className="sidebar-item" href={backgroundHref(selectedAccountId, "#weekly-input-templates")}>
                 <FileText size={14} />
                 Input Templates
               </Link>
@@ -707,7 +740,8 @@ export function DashboardShell({ mode = "console" }: DashboardShellProps) {
   const [scheduleTimeZone, setScheduleTimeZone] = useState("UTC");
   const [scheduleTime, setScheduleTime] = useState(() => defaultScheduleTime("UTC"));
   const [scheduleTimeTouched, setScheduleTimeTouched] = useState(false);
-  const [notice, setNotice] = useState("Ready");
+  const [, setNotice] = useState("Ready");
+  const [actionFeedback, setActionFeedback] = useState<ActionFeedback | undefined>();
   const [readiness, setReadiness] = useState<ReadinessData | null>(null);
   const [isPending, startTransition] = useTransition();
   const initialHashScrollDoneRef = useRef(false);
@@ -719,10 +753,17 @@ export function DashboardShell({ mode = "console" }: DashboardShellProps) {
           getJson<DashboardData>("/api/dashboard"),
           getJson<ReadinessData>("/api/readiness")
         ]);
+        const requestedAccountId =
+          mode === "background" ? new URLSearchParams(window.location.search).get("account") ?? undefined : undefined;
+        const requestedAccount = requestedAccountId
+          ? next.xAccounts.find((account) => account.id === requestedAccountId)
+          : undefined;
         setData(next);
         setReadiness(nextReadiness);
-        setSelectedAccountId((current) => current || next.xAccounts[0]?.id || "");
-        setSelectedPersonaId((current) => current || next.xAccounts[0]?.personaId || next.personas[0]?.id || "");
+        setSelectedAccountId((current) => current || requestedAccount?.id || next.xAccounts[0]?.id || "");
+        setSelectedPersonaId(
+          (current) => current || requestedAccount?.personaId || next.xAccounts[0]?.personaId || next.personas[0]?.id || ""
+        );
         setNotice((current) => (current.startsWith("Unable to refresh") ? "Ready" : current));
       } catch (error) {
         setNotice(error instanceof Error ? `Unable to refresh: ${error.message}` : "Unable to refresh dashboard.");
@@ -764,7 +805,9 @@ export function DashboardShell({ mode = "console" }: DashboardShellProps) {
         ? "X OAuth connected. Personalized trends can use the authorized account."
         : `X OAuth ${oauthStatus}.`
     );
-    window.history.replaceState(null, "", window.location.pathname);
+    const url = new URL(window.location.href);
+    url.searchParams.delete("oauth");
+    window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
   }, []);
 
   const selectedAccount = useMemo(
@@ -777,7 +820,7 @@ export function DashboardShell({ mode = "console" }: DashboardShellProps) {
     [data, selectedPersonaId]
   );
   const accountSetupNeeded = needsAccountSetup(selectedPersona);
-  const shouldShowNotice = isPending || notice !== "Ready";
+  const feedbackFor = (scope: string) => (actionFeedback?.scope === scope ? actionFeedback : undefined);
 
   const selectAccount = (accountId: string) => {
     setSelectedAccountId(accountId);
@@ -787,12 +830,39 @@ export function DashboardShell({ mode = "console" }: DashboardShellProps) {
     if (account?.personaId) {
       setSelectedPersonaId(account.personaId);
     }
+    if (mode === "background") {
+      const url = new URL(window.location.href);
+      url.searchParams.set("account", accountId);
+      window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
+    }
   };
 
-  const runAction = (label: string, action: () => Promise<unknown>) => {
+  useEffect(() => {
+    if (mode !== "background" || !data) {
+      return;
+    }
+
+    const accountId = new URLSearchParams(window.location.search).get("account");
+    if (!accountId || accountId === selectedAccountId) {
+      return;
+    }
+
+    const account = data.xAccounts.find((item) => item.id === accountId);
+    if (!account) {
+      return;
+    }
+
+    setSelectedAccountId(account.id);
+    if (account.personaId) {
+      setSelectedPersonaId(account.personaId);
+    }
+  }, [data, mode, selectedAccountId]);
+
+  const runAction = (label: string, action: () => Promise<unknown>, scope = "global") => {
     startTransition(async () => {
       try {
         setNotice(`${label}...`);
+        setActionFeedback({ scope, kind: "pending", message: `${label}...` });
         const result = await action();
         const [next, nextReadiness] = await Promise.all([
           getJson<DashboardData>("/api/dashboard"),
@@ -800,9 +870,18 @@ export function DashboardShell({ mode = "console" }: DashboardShellProps) {
         ]);
         setData(next);
         setReadiness(nextReadiness);
-        setNotice(typeof result === "string" ? result : `${label} complete`);
+        const resultScope = isActionFeedbackResult(result) && result.scope ? result.scope : scope;
+        const message = isActionFeedbackResult(result)
+          ? result.message
+          : typeof result === "string"
+            ? result
+            : `${label} complete`;
+        setNotice(message);
+        setActionFeedback({ scope: resultScope, kind: "success", message });
       } catch (error) {
-        setNotice(error instanceof Error ? error.message : "Action failed.");
+        const message = error instanceof Error ? error.message : "Action failed.";
+        setNotice(message);
+        setActionFeedback({ scope, kind: "error", message });
       }
     });
   };
@@ -846,7 +925,7 @@ export function DashboardShell({ mode = "console" }: DashboardShellProps) {
       return currentBrief
         ? `Generated ${result.candidates.length} draft options from the current post brief. Keep one or more, or regenerate.`
         : `Generated ${result.candidates.length} draft options. Keep one or more, or regenerate.`;
-    });
+    }, "draft-panel");
 
   const keepCandidate = (candidate: GeneratedDraftCandidate) =>
     runAction("Draft selection", async () => {
@@ -856,7 +935,7 @@ export function DashboardShell({ mode = "console" }: DashboardShellProps) {
       });
       setDraftCandidates((current) => current.filter((item) => item !== candidate));
       return "Saved selected draft to Review Queue. You can keep another option from this batch.";
-    });
+    }, "draft-panel");
 
   const postBriefAsIs = () =>
     runAction("Brief post", async () => {
@@ -869,16 +948,16 @@ export function DashboardShell({ mode = "console" }: DashboardShellProps) {
       return generationBrief.trim()
         ? "Saved the post brief to Review Queue as approved."
         : "Saved selected weekly input(s) to Review Queue as approved.";
-    });
+    }, "draft-panel");
 
   const approve = (draft: DraftPost) =>
-    runAction("Approval", () => postJson(`/api/drafts/${draft.id}/approve`, { comment: "Approved from console" }));
+    runAction("Approval", () => postJson(`/api/drafts/${draft.id}/approve`, { comment: "Approved from console" }), `draft-${draft.id}`);
 
   const updateDraft = (draft: DraftPost, input: { text: string }) =>
-    runAction("Draft edit", () => patchJson(`/api/drafts/${draft.id}`, input));
+    runAction("Draft edit", () => patchJson(`/api/drafts/${draft.id}`, input), `draft-${draft.id}`);
 
   const updateDraftPublishingAccount = (draft: DraftPost, xAccountId: string) =>
-    runAction("Publishing account update", () => patchJson(`/api/drafts/${draft.id}`, { xAccountId }));
+    runAction("Publishing account update", () => patchJson(`/api/drafts/${draft.id}`, { xAccountId }), `draft-${draft.id}`);
 
   const deleteDraftPost = (draft: DraftPost) =>
     runAction("Draft delete", async () => {
@@ -892,7 +971,7 @@ export function DashboardShell({ mode = "console" }: DashboardShellProps) {
           : current
       );
       return "Draft deleted from Review Queue.";
-    });
+    }, `draft-${draft.id}`);
 
   const savePersonaStrategy = (persona: Persona, input: PersonaStrategyInput) =>
     runAction("Account information save", () => patchJson(`/api/personas/${persona.id}`, { ...input, xAccountId: selectedAccountId }));
@@ -935,15 +1014,18 @@ export function DashboardShell({ mode = "console" }: DashboardShellProps) {
         await postJson(`/api/drafts/${draft.id}/approve`, { comment: "Approved for scheduling from console" });
       }
 
-      await postJson("/api/scheduled-posts", {
+      const result = await postJson<{ scheduledPost: ScheduledPost }>("/api/scheduled-posts", {
         draftPostId: draft.id,
         xAccountId: draft.xAccountId,
         finalText: draft.text,
         scheduledFor: resolvedTime.isoValue
       });
 
-      return `Scheduling complete (${scheduleTimeZone})`;
-    });
+      return {
+        scope: `scheduled-${result.scheduledPost.id}`,
+        message: `Scheduling complete (${scheduleTimeZone})`
+      };
+    }, `draft-${draft.id}`);
 
   const updateScheduledPostTime = (post: ScheduledPost, value: string, timeZone: string) =>
     runAction("Schedule update", async () => {
@@ -952,22 +1034,48 @@ export function DashboardShell({ mode = "console" }: DashboardShellProps) {
         scheduledFor: resolvedTime.isoValue
       });
       return `Schedule updated (${timeZone})`;
-    });
+    }, `scheduled-${post.id}`);
 
   const cancelScheduledPost = (post: ScheduledPost) =>
     runAction("Schedule cancel", async () => {
       await deleteJson(`/api/scheduled-posts/${post.id}`);
       return "Schedule canceled. The draft is back in Approved.";
-    });
+    }, `scheduled-${post.id}`);
 
   const approveInteraction = (interaction: InteractionSuggestion) =>
-    runAction("Interaction review", () => postJson(`/api/interactions/${interaction.id}/approve`));
+    runAction("Reply schedule", async () => {
+      const source = data?.sourcePosts.find((item) => item.id === interaction.sourcePostId);
+      if (!source) {
+        throw new Error("Reply source post is missing.");
+      }
+      if (!interaction.suggestedText?.trim()) {
+        throw new Error("Reply suggestion is empty.");
+      }
+
+      const resolvedTime = resolveScheduleTime(scheduleTime, scheduleTimeZone);
+      const result = await postJson<{ scheduledPost: ScheduledPost }>("/api/scheduled-posts", {
+        interactionSuggestionId: interaction.id,
+        xAccountId: interaction.xAccountId,
+        finalText: interaction.suggestedText,
+        scheduledFor: resolvedTime.isoValue,
+        replyToPostId: interaction.type === "REPLY" ? source.xPostId : undefined,
+        quotePostId: interaction.type === "QUOTE" ? source.xPostId : undefined
+      });
+
+      return {
+        scope: `scheduled-${result.scheduledPost.id}`,
+        message: `Reply scheduled (${scheduleTimeZone})`
+      };
+    }, `interaction-${interaction.id}`);
+
+  const cancelInteraction = (interaction: InteractionSuggestion) =>
+    runAction("Reply skip", () => postJson(`/api/interactions/${interaction.id}/cancel`), `interaction-${interaction.id}`);
 
   const regenerateInteraction = (interaction: InteractionSuggestion) =>
-    runAction("Reply regenerate", () => postJson(`/api/interactions/${interaction.id}/regenerate`));
+    runAction("Reply regenerate", () => postJson(`/api/interactions/${interaction.id}/regenerate`), `interaction-${interaction.id}`);
 
   const syncInteractionReplies = () =>
-    runAction("Interaction sync", () => postJson("/api/interactions/sync"));
+    runAction("Interaction sync", () => postJson("/api/interactions/sync"), "interactions-panel");
 
   useEffect(() => {
     const scrollToHash = () => {
@@ -1014,7 +1122,7 @@ export function DashboardShell({ mode = "console" }: DashboardShellProps) {
 
   if (mode === "background") {
     return (
-      <AppFrame mode="background">
+      <AppFrame mode="background" selectedAccountId={selectedAccountId}>
         <header className="topbar">
           <div>
             <h1>Setup</h1>
@@ -1067,7 +1175,7 @@ export function DashboardShell({ mode = "console" }: DashboardShellProps) {
   }
 
   return (
-    <AppFrame mode="console">
+    <AppFrame mode="console" selectedAccountId={selectedAccountId}>
       <header className="topbar">
         <div>
           <h1>Grow & Brand on X</h1>
@@ -1127,16 +1235,10 @@ export function DashboardShell({ mode = "console" }: DashboardShellProps) {
           onKeepCandidate={keepCandidate}
           onPostBriefAsIs={postBriefAsIs}
           accountSetupNeeded={accountSetupNeeded}
+          actionFeedback={feedbackFor("draft-panel")}
           pending={isPending}
         />
       </section>
-
-      {shouldShowNotice ? (
-        <div className="notice-row">
-          <span className={isPending ? "pulse-dot active" : "pulse-dot"} />
-          <span>{notice}</span>
-        </div>
-      ) : null}
 
       <section className="dashboard-grid">
         <ReviewQueue
@@ -1154,20 +1256,31 @@ export function DashboardShell({ mode = "console" }: DashboardShellProps) {
           scheduleTimeZone={scheduleTimeZone}
           setScheduleTimeZone={setScheduleTimeZone}
           deviceTimeZone={deviceTimeZone}
+          getActionFeedback={feedbackFor}
           pending={isPending}
         />
         <InteractionPanel
           data={data}
           onApprove={approveInteraction}
+          onCancel={cancelInteraction}
           onRegenerate={regenerateInteraction}
           onSyncReplies={syncInteractionReplies}
+          scheduleTime={scheduleTime}
+          setScheduleTime={setScheduleTime}
+          scheduleTimeZone={scheduleTimeZone}
+          setScheduleTimeZone={setScheduleTimeZone}
+          deviceTimeZone={deviceTimeZone}
+          actionFeedback={feedbackFor("interactions-panel")}
+          getActionFeedback={feedbackFor}
           pending={isPending}
         />
         <ContentCalendar
           data={data}
+          readiness={readiness}
           onUpdateScheduledPost={updateScheduledPostTime}
           onCancelScheduledPost={cancelScheduledPost}
           deviceTimeZone={deviceTimeZone}
+          getActionFeedback={feedbackFor}
           pending={isPending}
         />
       </section>
@@ -1406,7 +1519,7 @@ function AccountSetupPrompt({
         </div>
       </div>
       <div className="account-setup-actions">
-        <Link className="icon-button compact accent" href="/background">
+        <Link className="icon-button compact accent" href={backgroundHref(selectedAccount?.id)}>
           <FileText size={16} />
           Set Identity
         </Link>
@@ -1621,7 +1734,7 @@ function WeeklyInputPanel({
           <Users2 size={18} />
           <h2>Collect Weekly Inputs</h2>
         </div>
-        <Link className="icon-button compact" href="/background#weekly-input-templates">
+        <Link className="icon-button compact" href={backgroundHref(selectedAccount?.id, "#weekly-input-templates")}>
           <FileText size={16} />
           Edit Input Templates
         </Link>
@@ -1761,6 +1874,7 @@ function DraftPostPanel({
   onKeepCandidate,
   onPostBriefAsIs,
   accountSetupNeeded,
+  actionFeedback,
   pending
 }: {
   data: DashboardData;
@@ -1779,6 +1893,7 @@ function DraftPostPanel({
   onKeepCandidate: (candidate: GeneratedDraftCandidate) => void;
   onPostBriefAsIs: () => void;
   accountSetupNeeded: boolean;
+  actionFeedback?: ActionFeedback;
   pending: boolean;
 }) {
   const recentWeeklyInputs = data.weeklyInputs.filter((input) => input.xAccountId === selectedAccountId).slice(0, 8);
@@ -1797,7 +1912,7 @@ function DraftPostPanel({
           <Sparkles size={18} />
           <h2>Draft Your Post</h2>
         </div>
-        <Link className="icon-button compact" href="/background">
+        <Link className="icon-button compact" href={backgroundHref(selectedAccountId)}>
           <FileText size={16} />
           Edit Account Information
         </Link>
@@ -1875,6 +1990,7 @@ function DraftPostPanel({
           {draftCandidates.length > 0 ? "Regenerate" : "Generate"}
         </button>
       </div>
+      <InlineFeedback feedback={actionFeedback} />
       {draftCandidates.length > 0 ? (
         <div className="candidate-list">
           {draftCandidates.map((candidate, index) => (
@@ -1913,6 +2029,7 @@ function ReviewQueue({
   scheduleTimeZone,
   setScheduleTimeZone,
   deviceTimeZone,
+  getActionFeedback,
   pending
 }: {
   data: DashboardData;
@@ -1926,6 +2043,7 @@ function ReviewQueue({
   scheduleTimeZone: string;
   setScheduleTimeZone: (value: string) => void;
   deviceTimeZone: string;
+  getActionFeedback: (scope: string) => ActionFeedback | undefined;
   pending: boolean;
 }) {
   const [editingDraftId, setEditingDraftId] = useState<string | null>(null);
@@ -2018,6 +2136,7 @@ function ReviewQueue({
                   const accountRoles = persona ? getAccountRoleNames(account, persona).join(", ") : "Role";
                   const isEditing = editingDraftId === draft.id;
                   const isScheduling = schedulingDraftId === draft.id;
+                  const draftFeedback = getActionFeedback(`draft-${draft.id}`);
                   const canEdit = ["CANDIDATE", "NEEDS_REVIEW", "APPROVED"].includes(draft.status);
                   const canDelete = draft.status !== "SCHEDULED" && draft.status !== "PUBLISHED";
                   return (
@@ -2185,10 +2304,11 @@ function ReviewQueue({
                               Cancel
                             </button>
                           </div>
-                        </div>
-                      ) : null}
-                    </article>
-                  );
+	                        </div>
+	                      ) : null}
+	                      <InlineFeedback feedback={draftFeedback} />
+	                    </article>
+	                  );
                 })}
               </div>
             ) : (
@@ -2256,15 +2376,19 @@ function DraftDeleteDialog({
 
 function ContentCalendar({
   data,
+  readiness,
   onUpdateScheduledPost,
   onCancelScheduledPost,
   deviceTimeZone,
+  getActionFeedback,
   pending
 }: {
   data: DashboardData;
+  readiness: ReadinessData | null;
   onUpdateScheduledPost: (post: ScheduledPost, value: string, timeZone: string) => void;
   onCancelScheduledPost: (post: ScheduledPost) => void;
   deviceTimeZone: string;
+  getActionFeedback: (scope: string) => ActionFeedback | undefined;
   pending: boolean;
 }) {
   const scheduledAccountGroups = data.xAccounts.map((account) => ({
@@ -2274,6 +2398,24 @@ function ContentCalendar({
       .filter((post) => post.xAccountId === account.id && ["QUEUED", "PUBLISHING", "FAILED"].includes(post.status))
       .sort((a, b) => new Date(a.scheduledFor).getTime() - new Date(b.scheduledFor).getTime())
   }));
+  const workerReady = (readiness?.workerCount ?? 0) > 0;
+  const overdueQueuedCount = data.scheduledPosts.filter(
+    (post) => post.status === "QUEUED" && new Date(post.scheduledFor).getTime() <= Date.now()
+  ).length;
+  const hasQueuedScheduledPosts = scheduledAccountGroups.some((group) =>
+    group.posts.some((post) => post.status === "QUEUED")
+  );
+  const workerWarning =
+    readiness && !workerReady && hasQueuedScheduledPosts
+      ? {
+          scope: "scheduled-worker",
+          kind: "error" as const,
+          message:
+            overdueQueuedCount > 0
+              ? `${overdueQueuedCount} queued post${overdueQueuedCount === 1 ? " is" : "s are"} past the scheduled time. Start npm run worker to publish overdue queued posts.`
+              : "Automatic publishing is paused because the publish worker is offline. Start npm run worker before the next scheduled time."
+        }
+      : undefined;
   const publishedPosts = data.scheduledPosts
     .filter((post) => post.status === "PUBLISHED")
     .sort((a, b) => new Date(b.scheduledFor).getTime() - new Date(a.scheduledFor).getTime())
@@ -2283,6 +2425,7 @@ function ContentCalendar({
     <>
       <section className="panel span-12" id="scheduled-posts">
         <PanelTitle icon={<Clock3 size={18} />} title="Scheduled Posts" meta={`${data.xAccounts.length} accounts`} />
+        <InlineFeedback feedback={workerWarning} />
         <div className="calendar-account-list">
           {scheduledAccountGroups.map(({ account, persona, posts }) => (
             <ScheduledAccountTimeline
@@ -2293,6 +2436,8 @@ function ContentCalendar({
               onUpdateScheduledPost={onUpdateScheduledPost}
               onCancelScheduledPost={onCancelScheduledPost}
               deviceTimeZone={deviceTimeZone}
+              getActionFeedback={getActionFeedback}
+              workerReady={workerReady}
               pending={pending}
             />
           ))}
@@ -2325,6 +2470,8 @@ function ScheduledAccountTimeline({
   onUpdateScheduledPost,
   onCancelScheduledPost,
   deviceTimeZone,
+  getActionFeedback,
+  workerReady,
   pending
 }: {
   account: XAccount;
@@ -2333,6 +2480,8 @@ function ScheduledAccountTimeline({
   onUpdateScheduledPost: (post: ScheduledPost, value: string, timeZone: string) => void;
   onCancelScheduledPost: (post: ScheduledPost) => void;
   deviceTimeZone: string;
+  getActionFeedback: (scope: string) => ActionFeedback | undefined;
+  workerReady: boolean;
   pending: boolean;
 }) {
   const trackRef = useRef<HTMLDivElement | null>(null);
@@ -2392,6 +2541,8 @@ function ScheduledAccountTimeline({
                   onUpdateScheduledPost={onUpdateScheduledPost}
                   onCancelScheduledPost={onCancelScheduledPost}
                   deviceTimeZone={deviceTimeZone}
+                  actionFeedback={getActionFeedback(`scheduled-${post.id}`)}
+                  workerReady={workerReady}
                   pending={pending}
                 />
               ))
@@ -2427,18 +2578,31 @@ function CalendarItem({
   onUpdateScheduledPost,
   onCancelScheduledPost,
   deviceTimeZone,
+  actionFeedback,
+  workerReady,
   pending
 }: {
   post: ScheduledPost;
   onUpdateScheduledPost: (post: ScheduledPost, value: string, timeZone: string) => void;
   onCancelScheduledPost: (post: ScheduledPost) => void;
   deviceTimeZone: string;
+  actionFeedback?: ActionFeedback;
+  workerReady: boolean;
   pending: boolean;
 }) {
   const [isEditing, setIsEditing] = useState(false);
   const [editTimeZone, setEditTimeZone] = useState(deviceTimeZone);
   const [editTime, setEditTime] = useState(() => editableScheduleTime(post.scheduledFor, deviceTimeZone));
   const canChangeSchedule = ["QUEUED", "FAILED"].includes(post.status);
+  const isOverdueQueued = post.status === "QUEUED" && new Date(post.scheduledFor).getTime() <= Date.now();
+  const workerOfflineFeedback =
+    !workerReady && isOverdueQueued
+      ? {
+          scope: `scheduled-${post.id}-worker`,
+          kind: "error" as const,
+          message: "Past scheduled time. Start npm run worker to publish this queued post."
+        }
+      : undefined;
 
   useEffect(() => {
     if (!isEditing) {
@@ -2450,7 +2614,10 @@ function CalendarItem({
   return (
     <article className="calendar-card">
       <div className="calendar-card-head">
-        <strong>{formatTime(post.scheduledFor)}</strong>
+        <div>
+          <strong>{formatTime(post.scheduledFor)}</strong>
+          {post.replyToPostId ? <span>Reply</span> : post.quotePostId ? <span>Quote</span> : null}
+        </div>
         <Badge tone={statusTone[post.status]}>{post.status}</Badge>
       </div>
       <p>{post.finalText}</p>
@@ -2460,6 +2627,7 @@ function CalendarItem({
           <span>{post.lastError}</span>
         </div>
       ) : null}
+      <InlineFeedback feedback={actionFeedback ?? workerOfflineFeedback} />
       {canChangeSchedule ? (
         <div className="calendar-card-actions">
           <button className="icon-button compact secondary" disabled={pending} onClick={() => setIsEditing((current) => !current)}>
@@ -2538,21 +2706,140 @@ function PublishedPostCard({ post, account }: { post: ScheduledPost; account?: X
   );
 }
 
+function buildFallbackInteractionContext(
+  data: DashboardData,
+  interaction: InteractionSuggestion,
+  source?: SourcePost,
+  account?: XAccount,
+  isRecentInteractorPost = false
+): InteractionContext | undefined {
+  if (interaction.context?.posts.length) {
+    return interaction.context;
+  }
+
+  if (!source || !account) {
+    return undefined;
+  }
+
+  if (isRecentInteractorPost) {
+    return {
+      kind: "recent_interactor_post",
+      summary: "This person recently interacted with the account.",
+      posts: [
+        {
+          id: source.xPostId,
+          label: "Their new post",
+          username: source.authorUsername,
+          text: source.text,
+          url: source.url,
+          postedAt: source.postedAt
+        }
+      ]
+    };
+  }
+
+  const sourceTime = new Date(source.postedAt).getTime();
+  const originalPost = data.scheduledPosts
+    .filter((post) => post.xAccountId === interaction.xAccountId && post.status === "PUBLISHED")
+    .filter((post) => Number.isNaN(sourceTime) || new Date(post.scheduledFor).getTime() <= sourceTime)
+    .sort((a, b) => new Date(b.scheduledFor).getTime() - new Date(a.scheduledFor).getTime())[0];
+
+  if (!originalPost) {
+    return {
+      kind: "published_post_reply",
+      posts: [
+        {
+          id: source.xPostId,
+          label: "Their reply",
+          username: source.authorUsername,
+          text: source.text,
+          url: source.url,
+          postedAt: source.postedAt
+        }
+      ]
+    };
+  }
+
+  return {
+    kind: "published_post_reply",
+    summary: "Older suggestions may show the closest matching published post as context.",
+    posts: [
+      {
+        id: originalPost.xPublishedPostId,
+        label: "Your original post",
+        username: account.username,
+        text: originalPost.finalText,
+        url: originalPost.xPublishedPostId ? `https://x.com/${account.username}/status/${originalPost.xPublishedPostId}` : undefined,
+        postedAt: originalPost.scheduledFor
+      },
+      {
+        id: source.xPostId,
+        label: "Their reply",
+        username: source.authorUsername,
+        text: source.text,
+        url: source.url,
+        postedAt: source.postedAt
+      }
+    ]
+  };
+}
+
+function InteractionContextView({ context }: { context?: InteractionContext }) {
+  if (!context?.posts.length) {
+    return null;
+  }
+
+  return (
+    <div className="interaction-thread">
+      <span>Conversation context</span>
+      <div className="interaction-thread-list">
+        {context.posts.map((post, index) => (
+          <div className="interaction-thread-item" key={`${post.id ?? post.label}-${index}`}>
+            <div>
+              <strong>{post.label}</strong>
+              {post.username ? <span>@{post.username}</span> : null}
+            </div>
+            <p>{post.text}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function InteractionPanel({
   data,
   onApprove,
+  onCancel,
   onRegenerate,
   onSyncReplies,
+  scheduleTime,
+  setScheduleTime,
+  scheduleTimeZone,
+  setScheduleTimeZone,
+  deviceTimeZone,
+  actionFeedback,
+  getActionFeedback,
   pending
 }: {
   data: DashboardData;
   onApprove: (interaction: InteractionSuggestion) => void;
+  onCancel: (interaction: InteractionSuggestion) => void;
   onRegenerate: (interaction: InteractionSuggestion) => void;
   onSyncReplies: () => void;
+  scheduleTime: string;
+  setScheduleTime: (value: string) => void;
+  scheduleTimeZone: string;
+  setScheduleTimeZone: (value: string) => void;
+  deviceTimeZone: string;
+  actionFeedback?: ActionFeedback;
+  getActionFeedback: (scope: string) => ActionFeedback | undefined;
   pending: boolean;
 }) {
-  const [reviewingInteractionId, setReviewingInteractionId] = useState<string | null>(null);
-  const replyInteractions = data.interactions.filter((interaction) => interaction.type === "REPLY");
+  const [schedulingInteractionId, setSchedulingInteractionId] = useState<string | null>(null);
+  const replyInteractions = data.interactions.filter(
+    (interaction) => interaction.type === "REPLY" && ["SUGGESTED", "BLOCKED"].includes(interaction.status)
+  );
   const pendingCount = replyInteractions.filter((interaction) => interaction.status === "SUGGESTED").length;
 
   return (
@@ -2570,6 +2857,7 @@ function InteractionPanel({
           </button>
         </div>
       </div>
+      <InlineFeedback feedback={actionFeedback} />
       <div className="interaction-list">
         {replyInteractions.length === 0 ? (
           <div className="empty-inline">No interaction suggestions yet.</div>
@@ -2577,8 +2865,10 @@ function InteractionPanel({
         {replyInteractions.slice(0, 4).map((interaction) => {
           const account = findAccount(data, interaction.xAccountId);
           const source = findSource(data, interaction.sourcePostId);
-          const isReviewing = reviewingInteractionId === interaction.id;
           const isRecentInteractorPost = interaction.rationale.includes("recently interacted with");
+          const context = buildFallbackInteractionContext(data, interaction, source, account, isRecentInteractorPost);
+          const isScheduling = schedulingInteractionId === interaction.id;
+          const interactionFeedback = getActionFeedback(`interaction-${interaction.id}`);
           return (
             <article className="interaction-card" key={interaction.id}>
               <div className="draft-head">
@@ -2588,66 +2878,83 @@ function InteractionPanel({
                 </div>
                 <Badge tone={statusTone[interaction.status]}>{interaction.status}</Badge>
               </div>
-              <div className="interaction-source">
-                <span>{isRecentInteractorPost ? "Their post" : "Their reply"}</span>
-                <p>{source?.text ?? (isRecentInteractorPost ? "Post unavailable." : "Reply unavailable.")}</p>
-              </div>
+              <InteractionContextView context={context} />
               <div className="interaction-suggestion">
                 <span>Suggested reply</span>
                 <p>{interaction.suggestedText}</p>
               </div>
-              {isReviewing ? (
-                <div className="interaction-review-box">
-                  <div>
-                    <strong>Rationale</strong>
-                    <p>{interaction.rationale}</p>
-                  </div>
-                  <div className="draft-meta">
-                    <Badge tone={interaction.riskLevel === "LOW" ? "good" : interaction.riskLevel === "MEDIUM" ? "warn" : "bad"}>
-                      {interaction.riskLevel.toLowerCase()} risk
-                    </Badge>
-                    {interaction.riskReasons.length > 0 ? <span>{interaction.riskReasons.join("; ")}</span> : <span>No risk flags</span>}
-                  </div>
-                  <div className="button-row">
-                    <button className="icon-button compact secondary" disabled={pending} onClick={() => onRegenerate(interaction)}>
-                      <RefreshCw size={16} />
-                      Regenerate
-                    </button>
-                    <button className="icon-button compact accent" disabled={pending} onClick={() => onApprove(interaction)}>
-                      <CheckCircle2 size={16} />
-                      Approve
+              {isScheduling ? (
+                <div className="interaction-schedule">
+                  <label>
+                    <span>Schedule reply</span>
+                    <ScheduleDateTimeControl value={scheduleTime} onChange={setScheduleTime} ariaLabel="Reply schedule time" />
+                  </label>
+                  <label>
+                    <span>Time zone</span>
+                    <CustomSelect
+                      value={scheduleTimeZone}
+                      onChange={setScheduleTimeZone}
+                      ariaLabel="Reply schedule time zone"
+                      options={getTimeZoneOptions(deviceTimeZone, scheduleTimeZone).map((timeZone) => ({
+                        value: timeZone,
+                        label: timeZoneLabel(timeZone)
+                      }))}
+                    />
+                  </label>
+                </div>
+              ) : null}
+              <div className="draft-meta">
+                <Badge tone={interaction.riskLevel === "LOW" ? "good" : interaction.riskLevel === "MEDIUM" ? "warn" : "bad"}>
+                  {interaction.riskLevel.toLowerCase()} risk
+                </Badge>
+                {interaction.riskReasons.length > 0 ? <span>{interaction.riskReasons.join("; ")}</span> : <span>No risk flags</span>}
+              </div>
+              <div className="button-row">
+                {isScheduling ? (
+                  <>
+	                    <button
+	                      className="icon-button compact accent"
+	                      disabled={pending}
+	                      onClick={() => {
+	                        onApprove(interaction);
+	                      }}
+	                    >
+                      <CalendarPlus size={16} />
+                      Schedule Reply
                     </button>
                     <button
                       className="icon-button compact secondary"
                       disabled={pending}
-                      onClick={() => setReviewingInteractionId(null)}
+                      onClick={() => setSchedulingInteractionId(null)}
                     >
                       <XIcon size={16} />
                       Cancel
                     </button>
-                  </div>
-                </div>
-              ) : null}
-              <div className="button-row">
-                {interaction.status === "SUGGESTED" && !isReviewing ? (
+                  </>
+                ) : (
                   <>
                     <button className="icon-button compact secondary" disabled={pending} onClick={() => onRegenerate(interaction)}>
                       <RefreshCw size={16} />
                       Regenerate
                     </button>
+                    <button className="icon-button compact secondary" disabled={pending} onClick={() => onCancel(interaction)}>
+                      <XIcon size={16} />
+                      Skip Reply
+                    </button>
                     <button
-                      className="icon-button compact"
+                      className="icon-button compact accent"
                       disabled={pending}
-                      onClick={() => setReviewingInteractionId(interaction.id)}
+                      onClick={() => setSchedulingInteractionId(interaction.id)}
                     >
-                      <ShieldCheck size={16} />
-                      Review
+                      <CheckCircle2 size={16} />
+                      Approve
                     </button>
                   </>
-                ) : null}
-              </div>
-            </article>
-          );
+	                )}
+	              </div>
+	              <InlineFeedback feedback={interactionFeedback} />
+	            </article>
+	          );
         })}
       </div>
     </section>
@@ -3267,6 +3574,19 @@ function PanelTitle({ icon, title, meta }: { icon: React.ReactNode; title: strin
         <h2>{title}</h2>
       </div>
       <span>{meta}</span>
+    </div>
+  );
+}
+
+function InlineFeedback({ feedback }: { feedback?: ActionFeedback }) {
+  if (!feedback) {
+    return null;
+  }
+
+  return (
+    <div className={`inline-feedback ${feedback.kind}`} role={feedback.kind === "error" ? "alert" : "status"}>
+      <span className={feedback.kind === "pending" ? "pulse-dot active" : "pulse-dot"} />
+      <span>{feedback.message}</span>
     </div>
   );
 }

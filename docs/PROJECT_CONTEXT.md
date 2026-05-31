@@ -35,7 +35,7 @@ Sparko is a Next.js + TypeScript app with:
 - Drafts must be approved before scheduling.
 - Edited approved drafts return to review before scheduling.
 - Duplicate or near-duplicate posts are blocked inside the configured safety window.
-- Same-account posts require a configurable interval between scheduled times.
+- Timing cadence is left to the user; Sparko does not enforce a minimum interval between posts on the same account.
 - Scheduled publishing uses the X API with OAuth user context, not browser automation.
 - No automatic likes, follows, or unsolicited reply automation are implemented.
 

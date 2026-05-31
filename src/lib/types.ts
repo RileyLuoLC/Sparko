@@ -166,6 +166,7 @@ export interface ScheduledPost {
   id: string;
   workspaceId: string;
   draftPostId?: string;
+  interactionSuggestionId?: string;
   xAccountId: string;
   finalText: string;
   scheduledFor: string;
@@ -173,6 +174,8 @@ export interface ScheduledPost {
   duplicateGroupKey: string;
   lastError?: string;
   xPublishedPostId?: string;
+  replyToPostId?: string;
+  quotePostId?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -210,8 +213,24 @@ export interface InteractionSuggestion {
   status: InteractionStatus;
   riskLevel: RiskLevel;
   riskReasons: string[];
+  context?: InteractionContext;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface InteractionContext {
+  kind: "published_post_reply" | "recent_interactor_post";
+  summary?: string;
+  posts: InteractionContextPost[];
+}
+
+export interface InteractionContextPost {
+  id?: string;
+  label: string;
+  username?: string;
+  text: string;
+  url?: string;
+  postedAt?: string;
 }
 
 export interface AuditLog {

@@ -114,19 +114,19 @@ Beginner
 Acceptance criteria:
 The guide describes the intended demo story, warns against real accounts, tokens, browser extensions, and private data, and only adds the asset to README after it is polished enough for a public first impression.
 
-## 9. Add tests for schedule interval validation
+## 9. Add tests for scheduled reply targets
 
 Expected:
-Cover posts scheduled too close together for the same account and posts scheduled safely apart.
+Cover scheduled replies so they preserve the source post id and publish as replies instead of normal top-level posts.
 
 Files:
-`src/lib/policy.ts`, `tests/policy.test.ts`
+`src/lib/prisma-store.ts`, `tests/policy.test.ts`
 
 Difficulty:
 Intermediate
 
 Acceptance criteria:
-Tests describe the expected minimum interval behavior and pass without relying on wall-clock timing.
+Tests describe the expected reply target behavior and pass without relying on live X API calls.
 
 ## 10. Add a concise demo reset command
 
