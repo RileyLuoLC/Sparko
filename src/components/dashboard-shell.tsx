@@ -383,7 +383,7 @@ function AppFrame({
               </Link>
             </div>
             <p className="sidebar-shoutout">
-              If Sparko helps, star the repo and share what you build with it.
+              If you like this tool, please give us a shoutout on X and tag @RileyLuoLC.
             </p>
           </nav>
 
