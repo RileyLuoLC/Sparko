@@ -888,6 +888,17 @@ select option:checked {
   min-width: 0;
 }
 
+.draft-schedule-form .schedule-datetime-control,
+.interaction-schedule .schedule-datetime-control {
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) minmax(76px, 0.9fr);
+  max-width: 100%;
+}
+
+.draft-schedule-form .schedule-date-input,
+.interaction-schedule .schedule-date-input {
+  grid-column: 1 / -1;
+}
+
 .schedule-time-separator {
   color: var(--text-muted);
   font-size: 1rem;

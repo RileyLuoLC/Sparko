@@ -20,6 +20,13 @@ But growth on X is not only about posting. It also comes from showing up in the 
 
 Sparko generates timely interaction suggestions on who to reply to, what to engage with, and how to keep conversations going — so your X presence compounds not just into reach, but into real relationships.
 
+## Before & After
+
+| Before | After |
+| --- | --- |
+| I launched Sparko to help builders, founders, growth marketers, investors, developers, and investors get better at growth and personal branding on X. | Attention is getting more personal, not less.<br><br>Sparko is my bet that growth on X won’t be won by louder brands, but by sharper characters: founders, PMs, engineers, marketers, designers, creators with something real to say. |
+| (Input Sparko's context) | The next growth channel is not another company account with polished launch copy.<br><br>It is the people inside the product explaining what they see, what they tried, what broke, and what they learned.<br><br>The hard part is helping them write without sanding off the person. |
+
 ## The Workflow
 
 1. Define your account identity
